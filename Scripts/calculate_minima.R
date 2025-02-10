@@ -1,7 +1,7 @@
-# CH and CW measured to the enarest 1mm from 1990-2007 and 2009, and to the nearest 0.1mm in 2008 and 2010-2019
+# PURPOSE: to calculate minima between dominant distribution modes of opilio chela height. Minima will serve as 
+# the distribution cutline to define morphometric maturity. 
 
-# Kernel density estimator to define distributions in CH to distinguish crab that 
-# have and have not undergone terminal molt using density function
+# Author: Emily Ryznar, Jon Richar, Shannon Hennessey
 
 # Load libs/params
 source("./Scripts/load_libs_params.R")
