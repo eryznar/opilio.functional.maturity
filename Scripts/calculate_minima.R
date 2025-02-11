@@ -83,7 +83,7 @@ for(ii in 1:length(bins)){
   
 }
 
-write.csv(min.dat, "./Output/cutline_minima.csv")
+write.csv(min.dat, "./Output/opilio_cutline_minima.csv")
 
 # Plot to make sure minima were calculated correctly
 right_join(bin.dat, min.dat %>% rename(BIN = bin)) -> plot.dat
