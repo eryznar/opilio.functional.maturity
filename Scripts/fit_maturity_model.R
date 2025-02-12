@@ -5,6 +5,10 @@
 # Load libs/params
 source("./Scripts/load_libs_params.R")
 
+# Read in maturity output from crabpack
+ratio <- readRDS("./Data/snow_survey_maturityEBS.rda")$male_mat_ratio
+pars <- readRDS("./Data/snow_survey_maturityEBS.rda")$model_parameters
+
 # Read in minima data and run model to create cutlines
 minima <- read.csv("./Output/opilio_cutline_minima.csv") %>%
   mutate(BETA0 = coef(lm(minima ~ midpoint))[1],
@@ -19,14 +23,29 @@ haul %>%
   dplyr::select(HAULJOIN, YEAR, MID_LATITUDE, MID_LONGITUDE) %>%
   rename(LATITUDE = MID_LATITUDE, LONGITUDE = MID_LONGITUDE)-> hauljoin
 
-  
 chela <- readRDS("./Data/snow_survey_specimenEBS.rda")$specimen %>%
   filter(SEX == 1,
          SHELL_CONDITION == 2, 
          HAUL_TYPE !=17, 
          #YEAR %in% c(2010, 2017, 2018, 2019) # years Jon uses for stock assessment estimates?
-         is.na(CHELA_HEIGHT) == FALSE)
+         is.na(CHELA_HEIGHT) == FALSE) %>%
+  dplyr::select(HAULJOIN, SPECIES, REGION, DISTRICT, YEAR, SIZE, CHELA_HEIGHT, SAMPLING_FACTOR)
 
+# Read in Jon data for 2010 and 2013
+jon.dat <- read.csv("./Data/opilio_chela_height_TS.csv") %>%
+  mutate(YEAR = as.numeric(substr(CRUISE, 1, 4)),
+         SPECIES = "SNOW",
+         REGION = "EBS",
+         DISTRICT = "ALL") %>%
+  dplyr::filter(YEAR %in% c(2010, 2013), 
+                #HAUL_TYPE !=17, need to make sure this was filtered by Jon
+                SEX == 1, 
+                SHELL_CONDITION == 2) %>%
+  dplyr::select(HAULJOIN, SPECIES, REGION, DISTRICT, YEAR, WIDTH, CHELA_HEIGHT, SAMPLING_FACTOR) %>%
+  rename(SIZE = WIDTH)
+
+# Join survey data and Jon's data from 2010 and 2013
+chela <- rbind(jon.dat, chela)
 
 # Pool and transform data using natural log
 chela %>%
@@ -46,7 +65,6 @@ chela2 %>%
          MIDPOINT = (UPPER + LOWER)/2) -> bin.dat
 
 # Calculate proportion mature by size bin
-# create expansion grid
 prop.dat <- bin.dat %>%
             mutate(MATURITY = case_when(LN_CH >= (BETA0 + BETA1*LN_CW) ~ "MATURE",
                                         LN_CH < (BETA0 + BETA1*LN_CW) ~ "IMMATURE"),
@@ -70,7 +88,7 @@ prop.dat <- bin.dat %>%
             mutate(LOWER = as.numeric(sub('.', '', LOWER)),
                    UPPER = as.numeric(gsub('.$', '', UPPER)),
                    MIDPOINT = (UPPER + LOWER)/2,
-                   PROP_MATURE = case_when((LOWER <= 40) ~ 0, # set all crab in 40-50 bin or smaller to immature
+                   PROP_MATURE = case_when((LOWER <= 40) ~ 0, # set all crab in 40-50 bin or smaller to immature; previous code assigns 0 and 1 to crab if no crab were caught
                                            (LOWER >= 130) ~ 1, # set all crab in 130-140 bin or larger to mature
                                            TRUE ~ PROP_MATURE),
                    SIZE_BIN = paste0(LOWER, "-", UPPER)) %>%
@@ -81,7 +99,7 @@ prop.dat <- bin.dat %>%
             # Format final output file
             rename(NUM_IMMATURE = IMMATURE,
                    NUM_MATURE = MATURE) %>%
-            replace_na(list(PROP_MATURE = 0)) %>%
+            #replace_na(list(PROP_MATURE = 0)) %>% # SHOULD NOT REPLACE NAs with ZERO IF THERE WERE NO CRAB CAUGHT
             dplyr::select(SPECIES, REGION, DISTRICT, YEAR, SIZE_BIN, MIDPOINT, LATITUDE, LONGITUDE, NUM_IMMATURE, NUM_MATURE, TOTAL_CRAB, PROP_MATURE)
           
 write.csv(prop.dat, "./Output/opilio_propmat_latlon.csv")
@@ -95,30 +113,59 @@ agg.prop.dat <- prop.dat %>%
                        PROP_MATURE = NUM_MATURE/TOTAL_CRAB,
                        LOWER = as.numeric(sub("-.*", "", SIZE_BIN)),
                        UPPER =  as.numeric(sub(".*-", "", SIZE_BIN)),
-                       PROP_MATURE = case_when((LOWER <= 40) ~ 0, # set all crab in 40-50 bin or smaller to immature
-                                               (LOWER >= 130) ~ 1, # set all crab in 130-140 bin or larger to mature
+                       PROP_MATURE = case_when((LOWER <= 40 & TOTAL_CRAB !=0) ~ 0, # set all crab in 40-50 bin or smaller to immature; previous code assigns 0 and 1 to crab if no crab were caught
+                                               (LOWER >= 130 & TOTAL_CRAB !=0) ~ 1, # set all crab in 130-140 bin or larger to mature
                                                TRUE ~ PROP_MATURE)) %>%
-                replace_na(list(PROP_MATURE = 0)) %>%
-                dplyr::select(!c(LOWER, UPPER))
+                #replace_na(list(PROP_MATURE = 0)) %>% # SHOULD NOT REPLACE NAs with ZERO IF THERE WERE NO CRAB CAUGHT
+                dplyr::select(!c(LOWER, UPPER)) %>%
+                group_by(YEAR) %>%
+                arrange(., MIDPOINT, .by_group = TRUE) %>%
+                ungroup()
 
 write.csv(agg.prop.dat, "./Output/opilio_propmat_agg.csv")
 
-## Fit size at maturity model --------------------------------------------------
-latlon params <- agg.prop.dat %>%
-                  group_by(YEAR) %>%
-                  do(model = nls(PROP_MATURE ~ (1/(1 + exp(-a*(as.numeric(MIDPOINT) - b)))),
-                                 data = .,
-                                 start = list(a = 0.10, b = 60.0),
-                                 na.action = na.omit)) %>% 
-                  ungroup() %>%
-                  mutate(nls = lapply(model, broom::tidy)) %>%
-                  unnest(nls) %>%
-                  pivot_wider(names_from = term, values_from = c(estimate, std.error, statistic, p.value)) %>%
-                  rename(A_EST = estimate_a, 
-                         A_SE = std.error_a,
-                         B_EST = estimate_b,
-                         B_SE = std.error_b) %>%
-                  select(SPECIES, REGION, DISTRICT, YEAR, A_EST, A_SE, B_EST, B_SE) %>%
-                  arrange(SPECIES, REGION, DISTRICT, YEAR)
 
+## Fit size at maturity model --------------------------------------------------
+# Jon filters out 2008, 2012, 2014, 2016 due to non-convergence?
+# 2020 is omitted bc we didn't have a survey
+# 2010 and 2013 are problematic for me I don't have any data (only via special projects?)
+
+yrs <- unique(agg.prop.dat$YEAR)
+yrs <- c(1991:2007,2009:2011, 2013, 2015, 2017:2019, 2021:2024)
+params <- data.frame()
+
+for(ii in 1:length(yrs)){
+  print(paste("Fitting year", yrs[ii]))
   
+  #filter by year
+  agg.prop.dat %>%
+    filter(YEAR == yrs[ii]) -> mod.dat
+  
+  #fit nls model
+  mod <- nls(PROP_MATURE ~ (1/(1 + exp(-a*(as.numeric(MIDPOINT) - b)))),
+              data = mod.dat,
+              start = list(a = 0.10, b = 60.0),
+              na.action = na.omit, 
+              nls.control(maxiter = 5000))
+  
+  #pull out params
+  A_EST <- summary(mod)$coefficients[1,1]
+  A_SE <- summary(mod)$coefficients[1,2]
+  B_EST <- summary(mod)$coefficients[2,1]
+  B_SE <- summary(mod)$coefficients[2,2]
+  
+  #create summary df
+  out <- data.frame(SPECIES = unique(mod.dat$SPECIES),
+                    REGION = unique(mod.dat$REGION),
+                    DISTRICT = unique(mod.dat$DISTRICT),
+                    YEAR = yrs[ii],
+                    A_EST = A_EST,
+                    A_SE = A_SE,
+                    B_EST = B_EST,
+                    B_SE = B_SE)
+  
+  params <- rbind(params, out)
+  
+}
+
+write.csv(params, "./Output/maturity_model_params.csv")
