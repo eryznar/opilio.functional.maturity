@@ -6,13 +6,27 @@
 # Load libs/params
 source("./Scripts/load_libs_params.R")
 
-# Obtain CH and CW measurements from shell 2 males
+# Load Jon chela data to get 2010 and 2013
+jon.dat <- read.csv("./Data/opilio_chela_height_TS.csv") %>%
+          mutate(YEAR = substr(CRUISE, 1, 4)) %>%
+          dplyr::filter(YEAR %in% c(2010, 2013), 
+                        #HAUL_TYPE !=17, need to make sure this was filtered by Jon
+                        SEX == 1, 
+                        SHELL_CONDITION == 2) %>%
+  dplyr::select(HAULJOIN, YEAR, WIDTH, CHELA_HEIGHT, SAMPLING_FACTOR) %>%
+  rename(SIZE = WIDTH)
+
+# Obtain CH and CW measurements from shell 2 males from survey data
 chela <- readRDS("./Data/snow_survey_specimenEBS.rda")$specimen %>%
           filter(SEX == 1,
                  SHELL_CONDITION == 2, 
                  HAUL_TYPE !=17, 
                  #YEAR %in% c(2010, 2017, 2018, 2019) # years Jon uses for stock assessment estimates?
-                 is.na(CHELA_HEIGHT) == FALSE)
+                 is.na(CHELA_HEIGHT) == FALSE) %>%
+  dplyr::select(HAULJOIN, YEAR, SIZE, CHELA_HEIGHT, SAMPLING_FACTOR)
+
+# Join survey data and Jon's data from 2010 and 2013
+chela <- rbind(jon.dat, chela)
 
 # Pool and transform data using natural log
 chela %>%
