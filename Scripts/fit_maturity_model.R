@@ -133,6 +133,7 @@ write.csv(agg.prop.dat, "./Output/opilio_propmat_agg.csv")
 yrs <- unique(agg.prop.dat$YEAR)
 yrs <- c(1991:2007,2009:2011, 2013, 2015, 2017:2019, 2021:2024)
 params <- data.frame()
+preds <- data.frame()
 
 for(ii in 1:length(yrs)){
   print(paste("Fitting year", yrs[ii]))
@@ -166,6 +167,24 @@ for(ii in 1:length(yrs)){
   
   params <- rbind(params, out)
   
+  #create prediction df
+  out2 <- data.frame(SPECIES = unique(mod.dat$SPECIES),
+                    REGION = unique(mod.dat$REGION),
+                    DISTRICT = unique(mod.dat$DISTRICT),
+                    YEAR = yrs[ii],
+                    MIDPOINT = mod.dat$MIDPOINT,
+                    PROP_MATURE = predict(mod, mod.dat))
+  
+  preds <- rbind(preds, out2)
+  
 }
 
 write.csv(params, "./Output/maturity_model_params.csv")
+
+##Plot maturity ogives
+ggplot(preds, aes(MIDPOINT, PROP_MATURE, group = YEAR))+
+  geom_line()+
+  theme_bw()+
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "blue")
+
+
