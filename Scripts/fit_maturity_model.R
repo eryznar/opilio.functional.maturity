@@ -2,7 +2,15 @@
 
 # Author: Emily Ryznar, Jon Richar, Shannon Hennessey
 
-# Load libs/params
+# GENERAL WORKFLOW:
+# 1) Calculate distribution minima between ln(chela height) density clouds by ln(carapace width) interval
+# 2) Run linear model between minima and chela height midpoints to create cutlines (extract model params)
+    # could maybe try fitting a nonlinear model to determine cutline, wouldn't necessitate log trans
+# 3) Use cutline params to define mature/immature on chela-measured crab from survey data
+# 4) Fit nls model between proportion mature and carapace width midpoint by year, extract parameters
+# 5) Apply nls model parameters (ogives) to all male survey crab to determine maturity
+
+# LOAD LIBS/PARAMS ----
 source("./Scripts/load_libs_params.R")
 
 # Read in maturity output from crabpack
@@ -11,8 +19,12 @@ pars <- readRDS("./Data/snow_survey_maturityEBS.rda")$model_parameters
 
 # Read in minima data and run model to create cutlines
 minima <- read.csv("./Output/opilio_cutline_minima.csv") %>%
-  mutate(BETA0 = coef(lm(minima ~ midpoint))[1],
-         BETA1 = coef(lm(minima ~ midpoint))[2])
+          mutate(BETA0 = coef(lm(minima ~ midpoint))[1],
+                 BETA1 = coef(lm(minima ~ midpoint))[2])
+  
+# minima <- read.csv("./Data/Jon_minima.csv") %>%
+#   mutate(BETA0 = coef(lm(y ~ x))[1],
+#          BETA1 = coef(lm(y ~ x))[2])
 
 # Read and filter survey data
 haul <- readRDS("./Data/snow_survey_specimenEBS.rda")$haul %>%
@@ -113,8 +125,8 @@ agg.prop.dat <- prop.dat %>%
                        PROP_MATURE = NUM_MATURE/TOTAL_CRAB,
                        LOWER = as.numeric(sub("-.*", "", SIZE_BIN)),
                        UPPER =  as.numeric(sub(".*-", "", SIZE_BIN)),
-                       PROP_MATURE = case_when((LOWER <= 40 & TOTAL_CRAB !=0) ~ 0, # set all crab in 40-50 bin or smaller to immature; previous code assigns 0 and 1 to crab if no crab were caught
-                                               (LOWER >= 130 & TOTAL_CRAB !=0) ~ 1, # set all crab in 130-140 bin or larger to mature
+                       PROP_MATURE = case_when((LOWER < 40) ~ 0, # set all crab in 40-50 bin smaller to immature; previous code assigns 0 and 1 to crab if no crab were caught
+                                               (LOWER >= 130) ~ 1, # set all crab in 130-140 bin or larger to mature
                                                TRUE ~ PROP_MATURE)) %>%
                 #replace_na(list(PROP_MATURE = 0)) %>% # SHOULD NOT REPLACE NAs with ZERO IF THERE WERE NO CRAB CAUGHT
                 dplyr::select(!c(LOWER, UPPER)) %>%
@@ -130,8 +142,7 @@ write.csv(agg.prop.dat, "./Output/opilio_propmat_agg.csv")
 # 2020 is omitted bc we didn't have a survey
 # 2010 and 2013 are problematic for me I don't have any data (only via special projects?)
 
-yrs <- unique(agg.prop.dat$YEAR)
-yrs <- c(1991:2007,2009:2011, 2013, 2015, 2017:2019, 2021:2024)
+yrs <- c(1989:2007,2009:2011, 2013, 2015, 2017:2019, 2021:2024)
 params <- data.frame()
 preds <- data.frame()
 
@@ -185,6 +196,23 @@ write.csv(params, "./Output/maturity_model_params.csv")
 ggplot(preds, aes(MIDPOINT, PROP_MATURE, group = YEAR))+
   geom_line()+
   theme_bw()+
-  geom_hline(yintercept = 0.5, linetype = "dashed", color = "blue")
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "blue")+
+  ggtitle("Proportion mature at size")+
+  ylab("Proportion mature")+
+  xlab("Survey year")+
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12))
 
+## Plot average size at 50% maturity
+ggplot(params, aes(YEAR, B_EST, group = 1))+
+  geom_point(size = 2)+
+  geom_line()+
+  geom_errorbar(aes(ymin = B_EST - B_SE, ymax = B_EST + B_SE)) +
+  theme_bw()+
+  ylab("Carapace width (mm)")+
+  xlab("Survey year")+
+  ggtitle("Snow crab size at 50% maturity")+
+  scale_x_continuous(breaks = seq(min(params$YEAR), max(params$YEAR), by = 5))+
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12))
 
