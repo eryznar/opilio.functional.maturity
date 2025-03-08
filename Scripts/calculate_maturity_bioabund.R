@@ -24,20 +24,30 @@ params <- readRDS("./Data/snow_survey_maturityEBS.rda")$model_parameters
 morph.dat <- spec %>% # this data already has 1MM size bins
               right_join(params, .) %>% # join in model params
               rename(COUNT = SAMPLING_FACTOR) %>%
-              filter(is.na(A_EST) == FALSE) %>%
               group_by(YEAR, STATION_ID, HAUL_TYPE, AREA_SWEPT, LATITUDE, LONGITUDE, REGION, DISTRICT, STRATUM,
                        TOTAL_AREA, SPECIES, SEX, SIZE_1MM) %>%
               reframe(COUNT = sum(COUNT), # aggregate by 1mm bins
                       CALCULATED_WEIGHT_1MM = sum(CALCULATED_WEIGHT_1MM)) %>%
               mutate(MATURE_COUNT = ((1/(1 + exp(-A_EST * (SIZE_1MM - B_EST)))) * COUNT), # apply ogive params to get proportion mature
-                     MATURE_WEIGHT = ((1/(1 + exp(-A_EST * (SIZE_1MM - B_EST)))) * CALCULATED_WEIGHT_1MM),
-                     MATURE_COUNT = case_when((SIZE_1MM <= 50) ~  0, # set mat males <= 50mm to zero
+                     MATURE_WEIGHT = ((1/(1 + exp(-A_EST * (SIZE_1MM - B_EST)))) * CALCULATED_WEIGHT_1MM)) %>%
+              mutate(MATURE_COUNT = case_when((SIZE_1MM <= 50) ~  0, # set mat males <= 50mm to zero
                                               TRUE ~ MATURE_COUNT),
                      MATURE_WEIGHT = case_when((SIZE_1MM <= 50) ~  0, # set mat males <= 50mm (60 for bairdi) to zero
-                                           TRUE ~ MATURE_WEIGHT),
-                     IMMATURE_COUNT = COUNT - MATURE_COUNT, # calculate immature count and KG
-                     IMMATURE_WEIGHT = CALCULATED_WEIGHT_1MM - MATURE_WEIGHT) %>%
+                                               TRUE ~ MATURE_WEIGHT)) %>%
               rename(TOTAL_COUNT = COUNT, TOTAL_CALCULATED_WEIGHT_1MM = CALCULATED_WEIGHT_1MM) %>%
+              mutate(IMMATURE_COUNT = TOTAL_COUNT - MATURE_COUNT, # calculate immature count and KG
+                     IMMATURE_WEIGHT = TOTAL_CALCULATED_WEIGHT_1MM - MATURE_WEIGHT) %>%
+              group_by(YEAR, STATION_ID, HAUL_TYPE, AREA_SWEPT, LATITUDE, LONGITUDE, TOTAL_AREA, SPECIES, SEX) %>%
+              mutate(MATURE_COUNT = case_when((MATURE_COUNT > 0) ~ MATURE_COUNT,
+                                              TRUE = 0),
+                     IMMATURE_COUNT = case_when((IMMATURE_COUNT > 0) ~ IMMATURE_COUNT,
+                                                TRUE = 0),
+                     MATURE_WEIGHT = case_when((MATURE_WEIGHT > 0) ~ MATURE_WEIGHT,
+                                               TRUE = 0),
+                     IMMATURE_WEIGHT = case_when((IMMATURE_WEIGHT > 0) ~ IMMATURE_WEIGHT,
+                                               TRUE = 0))
+                     
+              
               pivot_longer(., cols = c("MATURE_COUNT", "IMMATURE_COUNT", "MATURE_WEIGHT", "IMMATURE_WEIGHT"), names_to = "MAT_SEX", values_to = "VALUE") %>%
               mutate(TYPE = case_when((grepl("_COUNT", MAT_SEX) == "TRUE") ~ "MORPH_COUNT",
                                       TRUE ~ "MORPH_WEIGHT"), # morphometric counts and weights
