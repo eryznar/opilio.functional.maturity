@@ -69,4 +69,42 @@ right_join(tt, qq) %>%
 write.csv(diff.snow, "./Output/diff_chelamsrd_snow.csv")
 
 
+# Comparing maturity ratios between Emily and Jon's estimates ----
+# read in Emily's data
+agg.prop.dat <- read.csv("./Output/opilio_propmat_agg.csv")
+
+# Read in maturity output from crabpack (Jon's data)
+ratio <- readRDS("./Data/snow_survey_maturityEBS.rda")$male_mat_ratio
+pars <- readRDS("./Data/snow_survey_maturityEBS.rda")$model_parameters
+
+# calculate differences for male maturity ratios
+agg.prop.dat %>%
+  dplyr::select(YEAR, MIDPOINT, NUM_IMMATURE, NUM_MATURE, TOTAL_CRAB, PROP_MATURE) %>%
+  rename(SIZE_BIN = MIDPOINT, TOTAL_CRAB_EM = TOTAL_CRAB, PROP_MATURE_EM = PROP_MATURE, 
+         NUM_IMMATURE_EM = NUM_IMMATURE, NUM_MATURE_EM = NUM_MATURE) -> em.dat
+
+ratio %>%
+  dplyr::select(YEAR, SIZE_BIN, NUM_IMMATURE, NUM_MATURE, TOTAL_CRAB, PROP_MATURE) %>%
+  right_join(., em.dat) %>%
+  filter(is.na(TOTAL_CRAB) == FALSE) %>%
+  mutate(diff_imm = NUM_IMMATURE - NUM_IMMATURE_EM,
+         diff_mat = NUM_MATURE - NUM_MATURE_EM,
+         diff_total = TOTAL_CRAB - TOTAL_CRAB_EM,
+         diff_prop = PROP_MATURE - PROP_MATURE_EM) -> ll
+
+ll %>%
+  filter(diff_total > 0.0001) -> probs
+
+# calculate differences for model parameters
+jon.pars <- pars
+diff <- read.csv("./Output/maturity_model_params.csv") %>%
+  rename(A_EST_EM = A_EST, A_SE_EM = A_SE, B_EST_EM = B_EST, B_SE_EM = B_SE) %>%
+  right_join(., jon.pars) %>%
+  mutate(diff_AEST = A_EST_EM - A_EST,
+         diff_ASE = A_SE_EM - A_SE,
+         diff_BEST = B_EST_EM - B_EST,
+         diff_BSE = B_SE_EM - B_SE)
+
+
+
 

@@ -1,25 +1,41 @@
-# CH and CW measured to the enarest 1mm from 1990-2007 and 2009, and to the nearest 0.1mm in 2008 and 2010-2019
+# PURPOSE: to calculate minima between dominant distribution modes of opilio chela height. Minima will serve as 
+# the distribution cutline to define morphometric maturity. 
 
-# Kernel density estimator to define distributions in CH to distinguish crab that 
-# have and have not undergone terminal molt using density function
+# Author: Emily Ryznar, Jon Richar, Shannon Hennessey
 
-# 1) CH and CW measurements were obtained from males of all shell conditions from 2008, 2010, 2012, 2014, 2016, 2017
-chela <- readRDS("./Data/tanner_survey_specimenEBS.rda")$specimen %>%
-  filter(SEX == 1, YEAR %in% c(2008, 2010, 2012, 2014, 2016, 2017))
+# Load libs/params
+source("./Scripts/load_libs_params.R")
 
-chela %>%
-  filter(is.na(CHELA_HEIGHT) == FALSE) %>%
-  group_by(YEAR) %>%
-  reframe(N = n()) -> tt
+# Load Jon chela data to get 2010 and 2013
+jon.dat <- read.csv("./Data/opilio_chela_height_TS.csv") %>%
+          mutate(YEAR = substr(CRUISE, 1, 4)) %>%
+          dplyr::filter(YEAR %in% c(2010, 2013), 
+                        #HAUL_TYPE !=17, need to make sure this was filtered by Jon
+                        SEX == 1, 
+                        SHELL_CONDITION == 2) %>%
+  dplyr::select(HAULJOIN, YEAR, WIDTH, CHELA_HEIGHT, SAMPLING_FACTOR) %>%
+  rename(SIZE = WIDTH)
 
-# 2) Data were pooled and linearized using natural log
+# Obtain CH and CW measurements from shell 2 males from survey data
+chela <- readRDS("./Data/snow_survey_specimenEBS.rda")$specimen %>%
+          filter(SEX == 1,
+                 SHELL_CONDITION == 2, 
+                 HAUL_TYPE !=17, 
+                 #YEAR %in% c(2010, 2017, 2018, 2019) # years Jon uses for stock assessment estimates?
+                 is.na(CHELA_HEIGHT) == FALSE) %>%
+  dplyr::select(HAULJOIN, YEAR, SIZE, CHELA_HEIGHT, SAMPLING_FACTOR)
+
+# Join survey data and Jon's data from 2010 and 2013
+chela <- rbind(jon.dat, chela)
+
+# Pool and transform data using natural log
 chela %>%
   mutate(LN_CW = log(SIZE),
          LN_CH = log(CHELA_HEIGHT)) -> chela2
 
-# 3) Data were then subset into 24 ln(CW) size intervals at ln(CW) of 0.025
+# Subset data into size intervals at ln(CW) of 0.025
 chela2 %>%
-  filter(is.na(LN_CH) == FALSE, LN_CW >= 4.3 & LN_CW <= 4.925) %>% # these were filtered out by Jon
+  filter(LN_CW >= 3.9 & LN_CW <= 4.6) %>% # these were filtered out by Jon
     mutate(BIN = cut_width(LN_CW, width = 0.025, center = 0.0125, closed = "left", dig.lab = 4),
            BIN2 = BIN) %>%
       separate(BIN2, sep = ",", into = c("LOWER", "UPPER")) %>%
@@ -27,33 +43,49 @@ chela2 %>%
              UPPER = as.numeric(gsub('.$', '', UPPER)),
              MIDPOINT = (UPPER + LOWER)/2) -> bin.dat
 
-# 4) Then sequentially applied KDE to the ln-chela height data for each interval, and the minima of the resulting
-#    density distributions was used to define maturity classes in a given interval
+# Sequentially apply KDE to the ln-chela height data for each interval, and identify minima of the resulting
+# density distributions to define maturity classes in a given interval
 
 bins <- unique(bin.dat$BIN)
-bins <- "[4.525,4.55)"
 
 min.dat <- data.frame()
 
 for(ii in 1:length(bins)){
   # filter data by bin of interest
   bin.dat %>%
-    filter(BIN == bins[1])-> opt.dat
+    filter(BIN == bins[ii])-> opt.dat
   
   # calculate density for chela heights within that bin
-  d <- density(opt.dat$LN_CH)
+  d <- density(opt.dat$LN_CH, kernel = "gaussian")
   
-  # Find local maxima (modes)
-  max <- which(diff(sign(diff(d$y))) == -2) + 1
+  # Identify local minima and maxima:
+  local_min_max <- function(x) {
+    signs <- sign(diff(x))
+    list(
+      minima = which(diff(signs) > 0) + 1,
+      maxima = which(diff(signs) < 0) + 1
+    )
+  }
   
-  # Identify the two dominant modes to calculate minimum outside distribution tails
-  ints <- round(sort(d$x[max])[1:2], 1)
-  ints[2] <- ints[1] + 0.2
+  extrema <- local_min_max(d$y) # both local minima and maxima
+ 
+  maxima <- d$x[extrema$maxima] # isolate maxima index locations
+  d.max <- d$y[extrema$maxima] # identify density at maxima index locations
   
-  # find minimum
+  cbind(maxima, d.max) %>%
+    as.data.frame() %>%
+    slice_max(d.max, n = 2) -> max.df # pull out maxima locations with top two greatest densities
+  
+
+  # Identify the two dominant modes based on maxima to calculate minimum outside distribution tails
+  ints <- round(max.df$maxima, 1)
+  ints <- ints[order(ints)]
+  ints[2] <- ints[1]+0.2
+ 
+  # find minimum in between dominant modes
   min <- optimize(approxfun(d$x, d$y), interval = ints)$minimum
   
-  # create dataframe
+  # create dataframe for output
   out <- data.frame(lwr = ints[1], 
                     upr = ints[2],
                     minima = min,
@@ -65,10 +97,54 @@ for(ii in 1:length(bins)){
   
 }
 
-min.dat <- min.dat[order(min.dat$midpoint),]
+write.csv(min.dat, "./Output/opilio_cutline_minima.csv")
 
-# 5) Two dominant modes within each extracted distribution were used to set boundaries for the region within which
-#    the search algorithm would seek minima to prevent IDing minima on distribution tails
-# 6) The cutline delineating the two maturity classes was then estimated as the best-fit linear regression of
-#    the minima in the ln(CH) distributions (the division between immature/mature crabs within a CW interval) against
-#    the midpoints of those CW intervals
+# Plot to make sure minima were calculated correctly
+right_join(bin.dat, min.dat %>% rename(BIN = bin)) -> plot.dat
+
+ggplot()+
+  geom_density(plot.dat, mapping = aes(LN_CH), linewidth = 1)+
+  geom_vline(plot.dat, mapping = aes(xintercept = minima), color = "blue", linetype = "dashed", linewidth = 1)+
+  facet_wrap(~BIN, scales = "free_x")+
+  theme_bw()+
+  ylab("Density")+
+  xlab("ln(chela height)")+
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12)) -> dens.plot
+
+ggsave("./Figures/density_plots.png", width = 11, height = 8.5)
+
+ggplot()+
+  geom_histogram(plot.dat, mapping = aes(x = LN_CH), bins = 30, fill = "white", color = "black")+
+  #geom_density(plot.dat, mapping = aes(LN_CH), color = "red", linetype = "dashed", linewidth = 1)+
+  geom_vline(plot.dat, mapping = aes(xintercept = minima), color = "blue", linewidth = 1)+
+  facet_wrap(~BIN, scales = "free_x")+
+  theme_bw()+
+  ylab("Density")+
+  xlab("ln(chela height)")+
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12)) -> hist.plot
+
+# Fit linear model to evaluate ln(CH) minima (imm/mat division) and ln(CW) bin midpoint
+mod <- lm(minima ~ midpoint, min.dat)
+
+prd <- predict(mod, data = min.dat, se.fit=TRUE, interval="confidence", level=0.95)
+
+cbind(min.dat %>% dplyr::select(!c(lwr, upr)), prd$fit) -> min.dat2
+
+labs <- data.frame(x = 4, y = 3, lab = paste0("R-squared = ", round(summary(mod)$r.squared, 2), "\np < 0.001"))
+                                              
+
+ggplot()+
+  geom_ribbon(min.dat2, mapping = aes(x = midpoint, ymin = lwr, ymax = upr), alpha = 0.4, fill = "cadetblue")+
+  geom_line(min.dat2, mapping = aes(midpoint, fit), linewidth = 1, color = "cadetblue")+
+  geom_point(min.dat2, mapping = aes(midpoint, minima))+
+  #geom_density(plot.dat, mapping = aes(LN_CH), color = "red", linetype = "dashed", linewidth = 1)+
+  theme_bw()+
+  annotate("text", x = 4, y = 3, label = paste0("R-squared = ", round(summary(mod)$r.squared, 2), "\np < 0.001"))+
+  ylab("Cutline (ln(chela height))")+
+  xlab("Bin (ln(carapace width))")+
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12)) -> cut.plot
+
+ggsave("./Figures/cutline_lm_plot.png", width = 6, height = 5)
