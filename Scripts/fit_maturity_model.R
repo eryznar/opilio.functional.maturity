@@ -44,7 +44,7 @@ chela <- readRDS("./Data/snow_survey_specimenEBS.rda")$specimen %>%
   dplyr::select(HAULJOIN, SPECIES, REGION, DISTRICT, YEAR, SIZE, CHELA_HEIGHT, SAMPLING_FACTOR)
 
 # Read in Jon data for 2010 and 2013
-jon.dat <- read.csv("./Data/opilio_chela_height_TS.csv") %>%
+jon.dat <- read.csv("./Data/Jon_opilio_chela_height_TS.csv") %>%
   mutate(YEAR = as.numeric(substr(CRUISE, 1, 4)),
          SPECIES = "SNOW",
          REGION = "EBS",
