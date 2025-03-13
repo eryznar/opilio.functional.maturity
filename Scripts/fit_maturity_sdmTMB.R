@@ -6,19 +6,22 @@
 source("./Scripts/load_libs_params.R")
 
 # LOAD RESPONSE DATA ---------------------------------------------------------------
-snow <- read.csv("./Output/opilio_propmat_latlon.csv") %>%
-  group_by(YEAR, LATITUDE, LONGITUDE) %>%
-  reframe(NUM_IMMATURE = sum(NUM_IMMATURE),
-          NUM_MATURE = sum(NUM_MATURE),
-          TOTAL_CRAB = sum(TOTAL_CRAB),
-          PROP_MATURE = NUM_MATURE/TOTAL_CRAB) %>%
-  st_as_sf(., coords = c("LONGITUDE", "LATITUDE"), crs = "+proj=longlat +datum=WGS84") %>%
-  st_transform(., crs = "+proj=utm +zone=2") %>%
-  cbind(st_coordinates(.)) %>%
-  as.data.frame(.) %>%
-  mutate(X = X/1000, Y = Y/1000) %>%
-  rename(LONGITUDE = X, LATITUDE = Y) %>%
-  replace_na(list(PROP_MATURE = 0))
+snow <- readRDS("./Data/snow_survey_specimenEBS.rda")$specimen %>%
+            filter(HAUL_TYPE !=17, SEX == 1, SHELL_CONDITION == 2) %>%
+            mutate(CUTOFF = BETA0 + BETA1*(log(SIZE_1MM)),
+                   MATURE = case_when((log(CHELA_HEIGHT) > CUTOFF) ~ 1,
+                                      TRUE ~ 0)) 
+  #==maturity coef # -2.8434, 0.2404
+  survDAT$cutoff<- -2.8434+0.2404*survDAT$SIZE_1MM
+  survDAT$mature<-survDAT$CHELA_HEIGHT>survDAT$cutoff
+  
+            st_as_sf(., coords = c("LONGITUDE", "LATITUDE"), crs = "+proj=longlat +datum=WGS84") %>%
+            st_transform(., crs = "+proj=utm +zone=2") %>%
+            cbind(st_coordinates(.)) %>%
+            as.data.frame(.) %>%
+            mutate(X = X/1000, Y = Y/1000) %>%
+            rename(LONGITUDE = X, LATITUDE = Y) %>%
+            replace_na(list(PROP_MATURE = 0))
   
 
 # LOAD FUNCTION TO FIT SDMTMB MODELS -----------------------------------------------
