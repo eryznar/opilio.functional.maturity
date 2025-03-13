@@ -22,9 +22,11 @@ minima <- read.csv("./Output/opilio_cutline_minima.csv") %>%
           mutate(BETA0 = coef(lm(minima ~ midpoint))[1],
                  BETA1 = coef(lm(minima ~ midpoint))[2])
   
-# minima <- read.csv("./Data/Jon_minima.csv") %>%
-#   mutate(BETA0 = coef(lm(y ~ x))[1],
-#          BETA1 = coef(lm(y ~ x))[2])
+minima <- read.csv("./Data/Jon_minima.csv") %>%
+  mutate(BETA0 = coef(lm(y ~ x))[1],
+         BETA1 = coef(lm(y ~ x))[2])
+
+mod <- lm(y ~ x, dat = minima)
 
 # Read and filter survey data
 haul <- readRDS("./Data/snow_survey_specimenEBS.rda")$haul %>%
@@ -193,8 +195,8 @@ for(ii in 1:length(yrs)){
 write.csv(params, "./Output/maturity_model_params.csv")
 
 ##Plot maturity ogives
-ggplot(preds, aes(MIDPOINT, PROP_MATURE, group = YEAR))+
-  geom_line()+
+ggplot(preds, aes(MIDPOINT, PROP_MATURE, group = YEAR, color = "YEAR"))+
+  geom_line(aes(color = YEAR))+
   theme_bw()+
   geom_hline(yintercept = 0.5, linetype = "dashed", color = "blue")+
   ggtitle("Proportion mature at size")+
