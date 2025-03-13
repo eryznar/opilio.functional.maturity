@@ -16,6 +16,7 @@ library(rnaturalearth)
 library(raster)
 library(concaveman)
 library(png)
+library(mgcv)
 
 
 
@@ -33,7 +34,7 @@ pred.grid <- readRDS(paste0(dir, "/Data/EBS_opilio_grid_5km_No_Land.rds")) %>%
               cbind(st_coordinates(.)) %>%
               as.data.frame(.) %>%
               dplyr::select(Area_km2, X, Y) %>%
-              replicate_df(., "year", years) %>%
+              #replicate_df(., "year", years) %>%
               mutate(X = X/1000, Y = Y/1000) %>%
               rename(LONGITUDE = X, LATITUDE = Y)
 
