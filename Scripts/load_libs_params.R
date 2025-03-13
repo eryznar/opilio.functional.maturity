@@ -17,7 +17,11 @@ library(raster)
 library(concaveman)
 library(png)
 library(mgcv)
-
+library(dplyr)
+library(mgcv)
+library(ggplot2)
+library("rnaturalearth")
+library(patchwork)
 
 
 # Read in survey data
@@ -37,4 +41,12 @@ pred.grid <- readRDS(paste0(dir, "/Data/EBS_opilio_grid_5km_No_Land.rds")) %>%
               #replicate_df(., "year", years) %>%
               mutate(X = X/1000, Y = Y/1000) %>%
               rename(LONGITUDE = X, LATITUDE = Y)
+
+# Specify cutline coefficients
+minima <- read.csv("./Output/opilio_cutline_minima.csv") %>%
+  mutate(BETA0 = coef(lm(minima ~ midpoint))[1],
+         BETA1 = coef(lm(minima ~ midpoint))[2])
+
+BETA0 <- unique(minima$BETA0)
+BETA1 <- unique(minima$BETA1)
 
