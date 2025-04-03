@@ -26,16 +26,46 @@ morph.dat <- readRDS("./Data/snow_survey_specimenEBS.rda")$specimen %>%
   mutate(size_at_mat = ifelse(MATURE == 1, mean(SIZE_1MM[MATURE == 1], na.rm = TRUE), NA))%>%
   ungroup()
 
+bin.dat <- morph.dat %>%
+  mutate(bin = case_when((SIZE_1MM>=55 & SIZE_1MM<=65) ~ "Small (55-65mm)", # 
+                         (SIZE_1MM>=95 & SIZE_1MM<=105) ~ "Large (95-105mm)")) %>%
+  filter(is.na(bin) == FALSE) %>%
+  group_by(Year, bin) %>%
+  mutate(total_crab = n(),
+         total_mature = sum(MATURE == 1),
+         prop_mature = total_mature/total_crab) %>%
+  ungroup()
+
+
 
 right_join(df.dat, survey.dat) %>%
-  right_join(., morph.dat) -> model.dat
+  right_join(., bin.dat) -> model.dat
 
 # FIT MODELS ---------------------------------------------------------------------------------------------
 model.dat %>%
   filter(is.na(size_at_mat) == FALSE) %>%
-  dplyr::select(!SIZE_1MM, MATURE) %>%
+  dplyr::select(Year, directedfish_biomass, small_male_biomass, large_male_biomass, size_at_mat, bin) %>%
   distinct() -> model.dat2
 
-mod.1 <- gam(size_at_mat ~ s(directedfish_biomass) + s(small_male_biomass) + s(large_male_biomass), data = model.dat2)
-mod.2 <- gam(MATURE ~ s(directedfish_biomass) + s(small_male_biomass) + s(large_male_biomass) + s(SIZE_1MM), data = model.dat)
+# small bin (55-65)
+SaM.dat <- model.dat2 %>% filter(bin == "Small (55-65mm)") %>%
+                distinct()
+
+prop.dat <- model.dat %>% filter(bin == "Small (55-65mm)") %>%
+              dplyr::select(!c(SIZE_1MM, MATURE, size_at_mat)) %>%
+              distinct()
+
+small.SaM <- gam(size_at_mat ~ s(directedfish_biomass, k = 3) + s(small_male_biomass, k = 3) + s(large_male_biomass,  k = 3), data = SaM.dat)
+small.prop <- gam(prop_mature ~ s(directedfish_biomass, k = 3) + s(small_male_biomass, k = 3) + s(large_male_biomass, k = 3), data = prop.dat)
+
+# large bin (95-105mm)
+SaM.dat <- model.dat2 %>% filter(bin == "Large (95-105mm)") %>%
+  distinct()
+
+prop.dat <- model.dat %>% filter(bin == "Large (95-105mm)") %>%
+  dplyr::select(!c(SIZE_1MM, MATURE, size_at_mat)) %>%
+  distinct()
+
+large.SaM <- gam(size_at_mat ~ s(directedfish_biomass, k = 3) + s(small_male_biomass, k = 3) + s(large_male_biomass,  k = 3), data = SaM.dat)
+large.prop <- gam(prop_mature ~ s(directedfish_biomass, k = 3) + s(small_male_biomass, k = 3) + s(large_male_biomass, k = 3), data = prop.dat)
 
