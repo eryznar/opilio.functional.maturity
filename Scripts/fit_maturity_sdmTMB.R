@@ -7,21 +7,17 @@ source("./Scripts/load_libs_params.R")
 
 # LOAD RESPONSE DATA ---------------------------------------------------------------
 snow <- readRDS("./Data/snow_survey_specimenEBS.rda")$specimen %>%
-            filter(HAUL_TYPE !=17, SEX == 1, SHELL_CONDITION == 2) %>%
+            filter(HAUL_TYPE !=17, SEX == 1, SHELL_CONDITION == 2, is.na(CHELA_HEIGHT) == FALSE) %>%
             mutate(CUTOFF = BETA0 + BETA1*(log(SIZE_1MM)),
                    MATURE = case_when((log(CHELA_HEIGHT) > CUTOFF) ~ 1,
-                                      TRUE ~ 0)) 
-  #==maturity coef # -2.8434, 0.2404
-  survDAT$cutoff<- -2.8434+0.2404*survDAT$SIZE_1MM
-  survDAT$mature<-survDAT$CHELA_HEIGHT>survDAT$cutoff
-  
+                                      TRUE ~ 0)) %>%
             st_as_sf(., coords = c("LONGITUDE", "LATITUDE"), crs = "+proj=longlat +datum=WGS84") %>%
             st_transform(., crs = "+proj=utm +zone=2") %>%
             cbind(st_coordinates(.)) %>%
             as.data.frame(.) %>%
             mutate(X = X/1000, Y = Y/1000) %>%
             rename(LONGITUDE = X, LATITUDE = Y) %>%
-            replace_na(list(PROP_MATURE = 0))
+  dplyr::select(YEAR, LATITUDE, LONGITUDE, SEX, SIZE, CHELA_HEIGHT, SAMPLING_FACTOR, MATURE)
   
 
 # LOAD FUNCTION TO FIT SDMTMB MODELS -----------------------------------------------
