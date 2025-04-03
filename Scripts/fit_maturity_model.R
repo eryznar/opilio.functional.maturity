@@ -195,6 +195,12 @@ for(ii in 1:length(yrs)){
 write.csv(params, "./Output/maturity_model_params.csv")
 
 ##Plot maturity ogives
+miss_yr <- c(2008, 2012, 2014, 2016, 2020)
+
+dummy <- data.frame(SPECIES = "SNOW", REGION = "EBS", DISTRICT = "ALL", YEAR = miss_yr, A_EST = NA, A_SE = NA, B_EST = NA, B_SE = NA)
+
+params <- rbind(params, dummy)
+
 ggplot(preds, aes(MIDPOINT, PROP_MATURE, group = YEAR, color = "YEAR"))+
   geom_line(aes(color = YEAR))+
   theme_bw()+
@@ -218,3 +224,39 @@ ggplot(params, aes(YEAR, B_EST, group = 1))+
   theme(axis.text = element_text(size = 12),
         axis.title = element_text(size = 12))
 
+miss_yr <- c(2013, 2015, 2020)
+
+dummy <- data.frame(SPECIES = "TANNER", REGION = "EBS", DISTRICT = rep(c("ALL", "E166", "W166"), each =3), YEAR = rep(miss_yr, 3), A_EST = NA, A_SE = NA, B_EST = NA, B_SE = NA)
+
+t.params <- rbind(t.params, dummy)
+
+ggplot()+
+  geom_line(t.params %>% filter(DISTRICT == "W166", YEAR > 1989), mapping = aes(YEAR, scale(B_EST)[,1], group = 1), color = "blue")+
+  geom_point(size = 2)+
+  #geom_errorbar(t.params %>% filter(DISTRICT == "ALL", YEAR > 1989), mapping = aes(x = YEAR, ymin = B_EST - B_SE, ymax = B_EST + B_SE), color = "blue") +
+  geom_line(params, mapping = aes(YEAR, scale(B_EST)[,1], group = 1))+
+  #geom_errorbar(params, mapping = aes(x = YEAR, ymin = B_EST - B_SE, ymax = B_EST + B_SE)) +
+  theme_bw()+
+  ylab("Carapace width (mm)")+
+  xlab("Survey year")+
+  ggtitle("Tanner crab size at 50% maturity")+
+  scale_x_continuous(breaks = seq(min(params$YEAR), max(params$YEAR), by = 5))+
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12))
+
+ggplot(t.params %>% filter(DISTRICT == "W166", YEAR > 1989), aes(YEAR, B_EST, group = 1))+
+  geom_point(size = 2)+
+  geom_line()+
+  geom_errorbar(aes(ymin = B_EST - B_SE, ymax = B_EST + B_SE)) +
+  theme_bw()+
+  ylab("Carapace width (mm)")+
+  xlab("Survey year")+
+  ggtitle("Tanner crab size at 50% maturity")+
+  scale_x_continuous(breaks = seq(min(params$YEAR), max(params$YEAR), by = 5))+
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12))
+
+var.1 <- t.params %>% filter(DISTRICT == "ALL", YEAR > 1989)
+var.2 <- params %>% filter(YEAR > 1989)
+
+cor.test(scale(var.1$B_EST)[,1], scale(var.2$B_EST)[,1])
