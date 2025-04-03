@@ -56,4 +56,4 @@ male_maturity_data <- crabpack::get_male_maturity(species = "TANNER",
 saveRDS(male_maturity_data, "./Data/tanner_survey_maturityEBS.rda")
 
 mat.dat <- male_maturity_data$male_mat_ratio
-params <- male_maturity_data$model_parameters
+t.params <- male_maturity_data$model_parameters
