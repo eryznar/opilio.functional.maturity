@@ -36,36 +36,54 @@ bin.dat <- morph.dat %>%
          prop_mature = total_mature/total_crab) %>%
   ungroup()
 
+# Load March-April ice data
+ice <- read.csv("./Data/ERA5ice_1972.2024.csv") %>%
+  filter(name == "Mar-Apr ice cover") %>%
+  dplyr::select(year, value) %>%
+  rename(Year = year, MarApr_ice = value)
+
 
 
 right_join(df.dat, survey.dat) %>%
-  right_join(., bin.dat) -> model.dat
+  right_join(., bin.dat) %>%
+  right_join(., ice) %>%
+  filter(is.na(size_at_mat) == FALSE) %>%
+  dplyr::select(!c(SIZE_1MM, MATURE)) %>%
+  distinct() -> model.dat
 
 # FIT MODELS ---------------------------------------------------------------------------------------------
-model.dat %>%
-  filter(is.na(size_at_mat) == FALSE) %>%
-  dplyr::select(Year, directedfish_biomass, small_male_biomass, large_male_biomass, size_at_mat, bin) %>%
-  distinct() -> model.dat2
-
-# small bin (55-65)
-SaM.dat <- model.dat2 %>% filter(bin == "Small (55-65mm)") %>%
+# small bin (55-65) ----
+small.dat <- model.dat %>% 
+                filter(bin == "Small (55-65mm)") %>%
                 distinct()
 
-prop.dat <- model.dat %>% filter(bin == "Small (55-65mm)") %>%
-              dplyr::select(!c(SIZE_1MM, MATURE, size_at_mat)) %>%
+small.SaM <- gam(size_at_mat ~ s(directedfish_biomass, k = 3) + s(small_male_biomass, k = 3) + s(large_male_biomass,  k = 3) + s(MarApr_ice, k = 3), data = small.dat)
+small.prop <- gam(prop_mature ~ s(directedfish_biomass, k = 3) + s(small_male_biomass, k = 3) + s(large_male_biomass, k = 3) + s(MarApr_ice, k = 3), data = small.dat)
+
+# diagnostics
+summary(small.SaM)
+gam.check(small.SaM)
+
+summary(small.prop)
+gam.check(small.prop)
+
+# large bin (95-105mm) ----
+large.dat <- model.dat %>% 
+              filter(bin == "Large (95-105mm)") %>%
               distinct()
 
-small.SaM <- gam(size_at_mat ~ s(directedfish_biomass, k = 3) + s(small_male_biomass, k = 3) + s(large_male_biomass,  k = 3), data = SaM.dat)
-small.prop <- gam(prop_mature ~ s(directedfish_biomass, k = 3) + s(small_male_biomass, k = 3) + s(large_male_biomass, k = 3), data = prop.dat)
 
-# large bin (95-105mm)
-SaM.dat <- model.dat2 %>% filter(bin == "Large (95-105mm)") %>%
-  distinct()
+large.SaM <- gam(size_at_mat ~ s(directedfish_biomass, k = 3) + s(small_male_biomass, k = 3) + s(large_male_biomass,  k = 3) + s(MarApr_ice, k = 3), data = large.dat)
+large.prop <- gam(prop_mature ~ s(directedfish_biomass, k = 4) + s(small_male_biomass, k = 4) + s(large_male_biomass, k = 4) + s(MarApr_ice, k = 4), data = large.dat)
 
-prop.dat <- model.dat %>% filter(bin == "Large (95-105mm)") %>%
-  dplyr::select(!c(SIZE_1MM, MATURE, size_at_mat)) %>%
-  distinct()
 
-large.SaM <- gam(size_at_mat ~ s(directedfish_biomass, k = 3) + s(small_male_biomass, k = 3) + s(large_male_biomass,  k = 3), data = SaM.dat)
-large.prop <- gam(prop_mature ~ s(directedfish_biomass, k = 3) + s(small_male_biomass, k = 3) + s(large_male_biomass, k = 3), data = prop.dat)
+# diagnostics
+summary(large.SaM)
+gam.check(large.SaM)
+appraise(large.SaM)
+draw(large.SaM)
 
+summary(large.prop)
+gam.check(large.prop)
+appraise(large.prop)
+draw(large.prop)
