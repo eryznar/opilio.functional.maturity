@@ -21,12 +21,12 @@ pars <- readRDS("./Data/snow_survey_maturityEBS.rda")$model_parameters
 minima <- read.csv("./Output/opilio_cutline_minima.csv") %>%
           mutate(BETA0 = coef(lm(minima ~ midpoint))[1],
                  BETA1 = coef(lm(minima ~ midpoint))[2])
-  
-minima <- read.csv("./Data/Jon_minima.csv") %>%
-  mutate(BETA0 = coef(lm(y ~ x))[1],
-         BETA1 = coef(lm(y ~ x))[2])
+#   
+# minima <- read.csv("./Data/Jon_minima.csv") %>%
+#   mutate(BETA0 = coef(lm(y ~ x))[1],
+#          BETA1 = coef(lm(y ~ x))[2])
 
-mod <- lm(y ~ x, dat = minima)
+#mod <- lm(y ~ x, dat = minima)
 
 # Read and filter survey data
 haul <- readRDS("./Data/snow_survey_specimenEBS.rda")$haul %>%
