@@ -22,6 +22,7 @@ library(mgcv)
 library(ggplot2)
 library("rnaturalearth")
 library(patchwork)
+library(gratia)
 
 
 # Read in survey data
