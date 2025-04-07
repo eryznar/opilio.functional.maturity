@@ -15,9 +15,8 @@ survey.dat <- read.csv("./Data/opilio_survey_malebiomass.csv") %>% # survey data
                        large_male_biomass_sh2 = as.numeric(as.character(gsub(",", "", large_male_biomass_sh2))),
                        small_male_biomass = small_male_biomass/1000,
                        large_male_biomass= large_male_biomass/1000,
-                       large_male_biomass_sh2= large_male_biomass_sh2/1000) %>%
-  filter(Year > 2000) # convert to kilotons 
-                       #Year = c(1988:2019, 2021:2024) - 1) # lagging survey data back one year 
+                       large_male_biomass_sh2= large_male_biomass_sh2/1000, 
+                       Year = c(1988:2019, 2021:2024) - 0) # lagging survey data back one year 
 
 morph.dat <- readRDS("./Data/snow_survey_specimenEBS.rda")$specimen %>%
   filter(HAUL_TYPE !=17, SEX == 1, SHELL_CONDITION == 2, is.na(CHELA_HEIGHT) == FALSE) %>%
@@ -68,7 +67,18 @@ small.dat <- model.dat %>%
                 distinct() %>%
             na.omit()
 
-small.prop <- gam(prop_mature ~ s(directedfish_biomass, k = 7) + s(small_male_biomass, k = 4) + s(large_male_biomass_sh2, k = 5) + s(MarApr_ice, k = 4), data = small.dat)
+small.prop <- gam(prop_mature ~ s(directedfish_biomass, k = 7) + s(small_male_biomass, k = 4) 
+                  + s(large_male_biomass_sh2, k = 4) + s(MarApr_ice, k = 4), method =  "REML", data = small.dat)
+
+small.prop.beta <- gam(prop_mature ~ s(directedfish_biomass, k = 7) + s(small_male_biomass, k = 4) 
+                  + s(large_male_biomass_sh2, k = 4) + s(MarApr_ice, k = 4), family = betar(link = "logit"), method =  "REML", data = small.dat)
+
+
+small.prop.beta.int <- gam(prop_mature ~ s(directedfish_biomass, k = 4) + s(small_male_biomass, large_male_biomass_sh2, k = 4)
+                         + s(MarApr_ice, k = 4), family = betar(link = "logit"), method = "REML", data = small.dat)
+
+AICc(small.prop, small.prop.beta, small.prop.beta.int)
+
 
 # diagnostics
 summary(small.prop)
@@ -76,13 +86,39 @@ gam.check(small.prop)
 appraise(small.prop)
 draw(small.prop)
 
+summary(small.prop.beta)
+gam.check(small.prop.beta)
+appraise(small.prop.beta)
+draw(small.prop.beta)
+
+summary(small.prop.beta.int)
+gam.check(small.prop.beta.int)
+appraise(small.prop.beta.int)
+draw(small.prop.beta.int)
+
+
 # proportion mature in large bin (95-105mm) ----
 large.dat <- model.dat %>% 
               filter(bin == "Large (95-105mm)") %>%
               distinct() %>%
             na.omit()
 
-large.prop <- gam(prop_mature ~ s(directedfish_biomass, k = 4) + s(small_male_biomass, k = 4) + s(large_male_biomass_sh2, k = 4) + s(MarApr_ice, k = 4), data = large.dat)
+large.prop <- gam(prop_mature ~ s(directedfish_biomass, k = 4) + 
+                    s(small_male_biomass, k = 4) + s(large_male_biomass, k = 4) + s(MarApr_ice, k = 4), method = "REML", data = large.dat)
+
+large.prop.int <- gam(prop_mature ~ s(directedfish_biomass, k = 4) + 
+                    s(small_male_biomass, large_male_biomass_sh2, k = 4) + s(MarApr_ice, k = 4), method = "REML", data = large.dat)
+
+large.prop.beta <- gam(prop_mature ~ s(directedfish_biomass, k = 4) + 
+                    s(small_male_biomass, k = 4) + s(large_male_biomass_sh2, k = 4) + s(MarApr_ice, k = 4), family = betar(link = "logit"), method = "REML",
+                    data = large.dat)
+
+
+large.prop.beta.int <- gam(prop_mature ~ s(directedfish_biomass, k = 4) + 
+                       s(small_male_biomass, large_male_biomass_sh2, k = 4) + s(MarApr_ice, k = 4), family = betar(link = "logit"), method = "REML",
+                     data = large.dat)
+
+AICc(large.prop, large.prop.int, large.prop.beta, large.prop.beta.int)
 
 # diagnostics
 summary(large.prop)
@@ -90,17 +126,50 @@ gam.check(large.prop)
 appraise(large.prop)
 draw(large.prop)
 
+summary(large.prop.int)
+gam.check(large.prop.int)
+appraise(large.prop.int)
+draw(large.prop.int)
+
+summary(large.prop.beta)
+gam.check(large.prop.beta)
+appraise(large.prop.beta)
+draw(large.prop.beta)
+
+summary(large.prop.beta.int)
+gam.check(large.prop.beta.int)
+appraise(large.prop.beta.int)
+draw(large.prop.beta.int)
+
 # size at maturity ----
 SaM.dat <- model.dat %>%
               dplyr::select(!c(bin, total_crab, total_mature, prop_mature)) %>%
               distinct() %>%
            na.omit()
 
-SaM.mod <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + s(small_male_biomass, k = 4) + s(large_male_biomass_sh2, k = 4) + s(MarApr_ice, k = 4), data = SaM.dat)
+SaM.mod <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + s(small_male_biomass, k = 4) + 
+                 s(large_male_biomass_sh2, k = 4) + s(MarApr_ice, k = 4), method = "REML", data = SaM.dat)
+SaM.mod.int <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
+                     s(small_male_biomass, large_male_biomass_sh2, k = 4) + s(MarApr_ice, k = 4), method = "REML", data = SaM.dat)
+
+SaM.mod.tw.int <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
+                     s(small_male_biomass, large_male_biomass_sh2, k = 4) + s(MarApr_ice, k = 4), family = tw(link = "log"), method = "REML", data = SaM.dat)
+
+AICc(SaM.mod, SaM.mod.int, SaM.mod.tw.int)
 
 # diagnostics
 summary(SaM.mod)
 gam.check(SaM.mod)
 appraise(SaM.mod)
 draw(SaM.mod)
+
+summary(SaM.mod.int)
+gam.check(SaM.mod.int)
+appraise(SaM.mod.int)
+draw(SaM.mod.int)
+
+summary(SaM.mod.tw.int)
+gam.check(SaM.mod.tw.int)
+appraise(SaM.mod.tw.int)
+draw(SaM.mod.tw.int)
 
