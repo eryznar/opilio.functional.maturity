@@ -19,7 +19,7 @@ survey.dat <- read.csv("./Data/opilio_survey_malebiomass.csv") %>% # survey data
                        Year = c(1988:2019, 2021:2024) - 0) # lagging survey data back one year 
 
 morph.dat <- readRDS("./Data/snow_survey_specimenEBS.rda")$specimen %>%
-  filter(HAUL_TYPE !=17, SEX == 1, SHELL_CONDITION == 2, is.na(CHELA_HEIGHT) == FALSE) %>%
+  filter(HAUL_TYPE !=17, SEX == 1, SHELL_CONDITION == 2, is.na(CHELA_HEIGHT) == FALSE, SIZE_1MM>40) %>%
   mutate(CUTOFF = BETA0 + BETA1*(log(SIZE_1MM)),
          MATURE = case_when((log(CHELA_HEIGHT) > CUTOFF) ~ 1,
                             TRUE ~ 0)) %>%
@@ -37,7 +37,8 @@ params <- read.csv("./Output/maturity_model_params.csv") %>%
 ice <- read.csv("./Data/ERA5ice_1972.2024.csv") %>%
   filter(name == "Mar-Apr ice cover") %>%
   dplyr::select(year, value) %>%
-  rename(Year = year, MarApr_ice = value)
+  rename(Year = year, MarApr_ice = value) %>%
+  mutate(Year = Year - 0) # ice lag
 
 
 # Bin specimen data

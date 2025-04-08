@@ -6,30 +6,13 @@
 # Load libs/params
 source("./Scripts/load_libs_params.R")
 
-# Load Jon chela data to get 2010 and 2013
-jon.dat <- read.csv("./Data/opilio_chela_height_TS.csv") %>%
-          mutate(YEAR = substr(CRUISE, 1, 4)) %>%
-          dplyr::filter(YEAR %in% c(2010, 2013), 
-                        #HAUL_TYPE !=17, need to make sure this was filtered by Jon
-                        SEX == 1, 
-                        SHELL_CONDITION == 2) %>%
-  dplyr::select(HAULJOIN, YEAR, WIDTH, CHELA_HEIGHT, SAMPLING_FACTOR) %>%
-  rename(SIZE = WIDTH)
-
-# Obtain CH and CW measurements from shell 2 males from survey data
-chela <- readRDS("./Data/snow_survey_specimenEBS.rda")$specimen %>%
-          filter(SEX == 1,
-                 SHELL_CONDITION == 2, 
-                 HAUL_TYPE !=17, 
-                 #YEAR %in% c(2010, 2017, 2018, 2019) # years Jon uses for stock assessment estimates?
-                 is.na(CHELA_HEIGHT) == FALSE) %>%
-  dplyr::select(HAULJOIN, YEAR, SIZE, CHELA_HEIGHT, SAMPLING_FACTOR)
-
-# Join survey data and Jon's data from 2010 and 2013
-chela <- rbind(jon.dat, chela)
+# Read in Shannon's chela data
+chela <- read.csv("./Data/snow_chela_UPDATED.csv") %>% # already != HT 17, only shell 2, no spec
+  mutate(RATIO = SIZE/CHELA_HEIGHT) %>% 
+  filter(RATIO >= 2 & RATIO <= 30) # filter extreme measurements
 
 # Pool and transform data using natural log
-chela %>%
+sh.dat %>%
   mutate(LN_CW = log(SIZE),
          LN_CH = log(CHELA_HEIGHT)) -> chela2
 
@@ -50,13 +33,15 @@ bins <- unique(bin.dat$BIN)
 
 min.dat <- data.frame()
 
+bandwidth <- 0.03 # can adjust this for kernal smoothing (lower = less smooth)
+
 for(ii in 1:length(bins)){
   # filter data by bin of interest
   bin.dat %>%
     filter(BIN == bins[ii])-> opt.dat
   
   # calculate density for chela heights within that bin
-  d <- density(opt.dat$LN_CH, kernel = "gaussian")
+  d <- density(opt.dat$LN_CH, kernel = "gaussian", bw = bandwidth)
   
   # Identify local minima and maxima:
   local_min_max <- function(x) {
@@ -103,7 +88,7 @@ write.csv(min.dat, "./Output/opilio_cutline_minima.csv")
 right_join(bin.dat, min.dat %>% rename(BIN = bin)) -> plot.dat
 
 ggplot()+
-  geom_density(plot.dat, mapping = aes(LN_CH), linewidth = 1)+
+  geom_density(plot.dat, mapping = aes(LN_CH), linewidth = 1, bw = bandwidth)+
   geom_vline(plot.dat, mapping = aes(xintercept = minima), color = "blue", linetype = "dashed", linewidth = 1)+
   facet_wrap(~BIN, scales = "free_x")+
   theme_bw()+
