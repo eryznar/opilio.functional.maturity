@@ -32,6 +32,31 @@ mat.dat <- male_maturity_data$male_mat_ratio
 params <- male_maturity_data$model_parameters
 
 
+# Get small and large mature male abundance/biomass
+spec <- readRDS("./Data/snow_survey_specimenEBS.rda")
+abund_55.65 <- calc_bioabund(crab_data = spec, 
+                             sex = "male", 
+                             region = "EBS", 
+                             district = "ALL",
+                             species = "SNOW", 
+                             size_min = 55, 
+                             size_max = 65, 
+                             shell_condition = "new_hardshell") %>%
+                mutate(bin = "Small (55-65mm)")
+
+abund_95.105 <- calc_bioabund(crab_data = spec, 
+                               sex = "male", 
+                               region = "EBS", 
+                               district = "ALL",
+                               species = "SNOW", 
+                               size_min = 95, 
+                               size_max = 105, 
+                               shell_condition = "new_hardshell") %>%
+                mutate(bin = "Large (95-105mm)")
+
+write.csv(rbind(abund_55.65, abund_95.105), "./Data/surveyabund_snowmales55.105.csv")
+
+
 # TANNER
 
 # Pull specimen data
