@@ -23,6 +23,7 @@ library(ggplot2)
 library("rnaturalearth")
 library(patchwork)
 library(gratia)
+library(MuMIn)
 
 
 # Read in survey data
