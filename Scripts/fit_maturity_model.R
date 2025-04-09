@@ -17,6 +17,9 @@ source("./Scripts/load_libs_params.R")
 ratio <- readRDS("./Data/snow_survey_maturityEBS.rda")$male_mat_ratio
 pars <- readRDS("./Data/snow_survey_maturityEBS.rda")$model_parameters
 
+# Read in updated chela data
+chela <- read.csv("./Data/snow_chela_UPDATED.csv")
+
 # Read in minima data and run model to create cutlines
 minima <- read.csv("./Output/opilio_cutline_minima.csv") %>%
           mutate(BETA0 = coef(lm(minima ~ midpoint))[1],
