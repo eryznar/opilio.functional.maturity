@@ -2,175 +2,532 @@
 source("./Scripts/load_libs_params.R")
 
 # LOAD DATA AND PROCESS ----------------------------------------------------------------------------------
+# Directed fishery data
 df.dat <- read.csv("./Data/opilio_directedfishery_catch.csv") %>%
-  dplyr::select(Year, Retained_kt) %>%
-  rename(directedfish_biomass = Retained_kt)# directed fishery data
+  dplyr::select(Year, Retained_kt, Discarded_males_kt) %>%
+  mutate(directedfish_biomass = Retained_kt + Discarded_males_kt) %>%
+  dplyr::select(Year, directedfish_biomass)
 
-survey.dat <- read.csv("./Data/opilio_survey_malebiomass.csv") %>% # survey data
-                mutate(small_male_biomass = gsub("\\s*\\([^\\)]+\\)", "", small_male_biomass),
-                       large_male_biomass = gsub("\\s*\\([^\\)]+\\)", "", large_male_biomass),
-                       large_male_biomass_sh2 = gsub("\\s*\\([^\\)]+\\)", "", large_male_biomass_sh2),
-                       small_male_biomass = as.numeric(as.character(gsub(",", "", small_male_biomass))),
-                       large_male_biomass = as.numeric(as.character(gsub(",", "", large_male_biomass))),
-                       large_male_biomass_sh2 = as.numeric(as.character(gsub(",", "", large_male_biomass_sh2))),
-                       small_male_biomass = small_male_biomass/1000,
-                       large_male_biomass= large_male_biomass/1000,
-                       large_male_biomass_sh2= large_male_biomass_sh2/1000, 
-                       Year = c(1988:2019, 2021:2024) - 0) # lagging survey data back one year 
+# Shannon chela data (just for 2010 and 2013 bc these are not in crabpack spec tables)
+chela_10.13 <- read.csv("./Data/snow_chela_UPDATED.csv") %>% # already != HT 17, only shell 2, no special projects
+                filter(YEAR %in% c(2010, 2013)) %>%
+                dplyr::select(!DATASET) 
+                
 
-morph.dat <- readRDS("./Data/snow_survey_specimenEBS.rda")$specimen %>%
-  filter(HAUL_TYPE !=17, SEX == 1, SHELL_CONDITION == 2, is.na(CHELA_HEIGHT) == FALSE, SIZE_1MM>40) %>%
-  mutate(CUTOFF = BETA0 + BETA1*(log(SIZE_1MM)),
-         MATURE = case_when((log(CHELA_HEIGHT) > CUTOFF) ~ 1,
-                            TRUE ~ 0)) %>%
-  dplyr::select(YEAR, SIZE_1MM, MATURE) %>%
-  rename(Year = YEAR) #%>%
-  # group_by(Year) %>%
-  # mutate(size_at_mat = ifelse(MATURE == 1, mean(SIZE_1MM[MATURE == 1], na.rm = TRUE), NA))%>%
-  # ungroup()
+# Survey specimen data
+bin.dat <- readRDS("./Data/snow_survey_specimenEBS.rda")$specimen %>%
+                #dplyr::select(colnames(chela_10.13)) %>%
+                filter(HAUL_TYPE !=17, SEX == 1, SHELL_CONDITION == 2, is.na(CHELA_HEIGHT) == FALSE) %>% # filter for males, sh2, only chela msrd, not HT17
+                # rbind(., chela_10.13) %>% # bind with 2010, 2013 chela data from Shannon (chela weight tables)
+                # mutate(RATIO = SIZE/CHELA_HEIGHT) %>%
+                # filter(RATIO >= 2 & RATIO <= 30) %>% # filter extreme measurements
+                # dplyr::select(!c(RATIO)) %>%
+                mutate(CUTOFF = BETA0 + BETA1*(log(SIZE_1MM)), # apply cutline model
+                       MATURE = case_when((log(CHELA_HEIGHT) > CUTOFF) ~ 1,
+                                          TRUE ~ 0)) %>%
+                dplyr::select(YEAR, SIZE_1MM, MATURE) %>%
+                rename(Year = YEAR) %>%
+                mutate(bin = case_when((SIZE_1MM>=55 & SIZE_1MM<=65) ~ "Small (55-65mm)", # apply small and large bins for modeling below
+                                       (SIZE_1MM>=95 & SIZE_1MM<=105) ~ "Large (95-105mm)")) %>%
+                filter(is.na(bin) == FALSE) %>%
+                group_by(Year, bin) %>%
+                reframe(total_crab = n(),
+                       total_mature = sum(MATURE == 1),
+                       prop_mature = total_mature/total_crab)  # calculate proportion mature in each bin
 
+# Join binned survey specimen data with abundance from survey for same size bins
+abund.dat <- read.csv("./Data/surveyabund_snowmales55.105.csv") %>%
+                dplyr::select(YEAR, ABUNDANCE, BIOMASS_MT, bin) %>%
+                rename(Year = YEAR, abundance = ABUNDANCE, biomass = BIOMASS_MT) %>%
+                pivot_wider(., values_from = c("abundance", "biomass"), names_from = "bin") %>%
+                rename(abundance_small = `abundance_Small (55-65mm)`, abundance_large = `abundance_Large (95-105mm)`,
+                       biomass_small = `biomass_Small (55-65mm)`, biomass_large = `biomass_Large (95-105mm)`)
+
+abund.bin.dat <- bin.dat %>%
+                    dplyr::select(Year, bin, prop_mature) %>%
+                    pivot_wider(., names_from = "bin", values_from = prop_mature) %>%
+                    rename(propmature_small = `Small (55-65mm)`, propmature_large = `Large (95-105mm)`) %>%
+                    right_join(., abund.dat) %>%
+                    mutate(mature_abundance_small = (abundance_small * propmature_small)/1e6,
+                           mature_abundance_large = (abundance_large * propmature_large)/1e6,
+                           mature_biomass_small = (biomass_small * propmature_small)/1000,
+                           mature_biomass_large = (biomass_large * propmature_small)/1000,
+                           abundance_small = abundance_small/1e6,
+                           abundance_large = abundance_large/1e6,
+                           biomass_small = biomass_small/1000,
+                           biomass_large= biomass_large/1000)
+                
+
+# Size at 50% maturity timeseries from maturity model
 params <- read.csv("./Output/maturity_model_params.csv") %>%
   dplyr::select(YEAR, B_EST) %>%
   rename(Year = YEAR, size_at_mat = B_EST)
 
 # Load March-April ice data
 ice <- read.csv("./Data/ERA5ice_1972.2024.csv") %>%
-  filter(name == "Mar-Apr ice cover") %>%
-  dplyr::select(year, value) %>%
-  rename(Year = year, MarApr_ice = value) %>%
-  mutate(Year = Year - 0) # ice lag
+          filter(name == "Mar-Apr ice cover") %>%
+          dplyr::select(year, value) %>%
+          rename(Year = year, MarApr_ice = value) %>%
+          mutate(Year = Year - 0) # ice lag
 
 
-# Bin specimen data
-bin.dat <- morph.dat %>%
-  mutate(bin = case_when((SIZE_1MM>=55 & SIZE_1MM<=65) ~ "Small (55-65mm)", # 
-                         (SIZE_1MM>=95 & SIZE_1MM<=105) ~ "Large (95-105mm)")) %>%
-  #filter(is.na(bin) == FALSE) %>%
-  group_by(Year, bin) %>%
-  mutate(total_crab = n(),
-         total_mature = sum(MATURE == 1),
-         prop_mature = total_mature/total_crab) %>%
-  ungroup()
-
-
-right_join(df.dat, survey.dat) %>%
-  right_join(., bin.dat) %>%
-  right_join(., ice) %>%
-  #filter(is.na(size_at_mat) == FALSE) %>%
-  dplyr::select(!c(SIZE_1MM, MATURE)) %>%
-  distinct() %>%
-  right_join(., params) -> model.dat
+# Bind all dataframes into df for modeling
+model.dat <- right_join(df.dat, abund.bin.dat) %>%
+            right_join(., ice) %>%
+            #filter(is.na(size_at_mat) == FALSE) %>%
+            right_join(., params) %>%
+            mutate(mature_abundance_small = log(mature_abundance_small + 1),
+                   mature_abundance_large = log(mature_abundance_large + 1),
+                   mature_biomass_small = log(mature_biomass_small + 1),
+                   mature_biomass_large = log(mature_biomass_large + 1),
+                   lag1_mature_abundance_small = lag(mature_abundance_small, n = 1),
+                   lag1_mature_abundance_large = lag(mature_abundance_large, n = 1),
+                   lag1_mature_biomass_small = lag(mature_biomass_small, n = 1),
+                   lag1_mature_biomass_large = lag(mature_biomass_large, n = 1),
+                   lag3_MarApr_ice = lag(MarApr_ice, n = 3))
 
 # FIT MODELS ---------------------------------------------------------------------------------------------
 # proportion mature in small bin (55-65) ----
-small.dat <- model.dat %>% 
-                filter(bin == "Small (55-65mm)") %>%
-                distinct() %>%
-            na.omit()
-
-small.prop <- gam(prop_mature ~ s(directedfish_biomass, k = 7) + s(small_male_biomass, k = 4) 
-                  + s(large_male_biomass_sh2, k = 4) + s(MarApr_ice, k = 4), method =  "REML", data = small.dat)
-
-small.prop.beta <- gam(prop_mature ~ s(directedfish_biomass, k = 7) + s(small_male_biomass, k = 4) 
-                  + s(large_male_biomass_sh2, k = 4) + s(MarApr_ice, k = 4), family = betar(link = "logit"), method =  "REML", data = small.dat)
-
-
-small.prop.beta.int <- gam(prop_mature ~ s(directedfish_biomass, k = 4) + s(small_male_biomass, large_male_biomass_sh2, k = 4)
-                         + s(MarApr_ice, k = 4), family = betar(link = "logit"), method = "REML", data = small.dat)
-
-AICc(small.prop, small.prop.beta, small.prop.beta.int)
-
-
-# diagnostics
-summary(small.prop)
-gam.check(small.prop)
-appraise(small.prop)
-draw(small.prop)
-
-summary(small.prop.beta)
-gam.check(small.prop.beta)
-appraise(small.prop.beta)
-draw(small.prop.beta)
-
-summary(small.prop.beta.int)
-gam.check(small.prop.beta.int)
-appraise(small.prop.beta.int)
-draw(small.prop.beta.int)
-
-
+  # abundance covariates ----
+  small.int.nolag.aa <- gam(propmature_small ~ s(directedfish_biomass, k = 4) + 
+                           s(mature_abundance_small, mature_abundance_large, k = 4) +
+                           s(MarApr_ice, k = 4),
+                           family = betar(link = "logit"), 
+                           method =  "REML", 
+                           data = model.dat)
+  
+  
+  small.main.nolag.aa <- gam(propmature_small ~ s(directedfish_biomass, k = 4) + 
+                          s(mature_abundance_small, k = 4) +
+                          s(mature_abundance_large, k = 4) +
+                          s(MarApr_ice, k = 4),
+                          family = betar(link = "logit"), 
+                          method =  "REML", 
+                          data = model.dat)
+  
+  small.int.lagabund.aa <- gam(propmature_small ~ s(directedfish_biomass, k = 4) + 
+                            s(lag1_mature_abundance_small, lag1_mature_abundance_large, k = 4) +
+                            s(MarApr_ice, k = 4),
+                            family = betar(link = "logit"), 
+                            method =  "REML", 
+                            data = model.dat)
+  
+  small.main.lagabund.aa <- gam(propmature_small ~ s(directedfish_biomass, k = 4) + 
+                            s(lag1_mature_abundance_small, k = 4) +
+                            s(lag1_mature_abundance_large, k = 4) +
+                            s(MarApr_ice, k = 4),
+                            family = betar(link = "logit"), 
+                            method =  "REML", 
+                            data = model.dat)
+  
+  small.int.icelag.aa <- gam(propmature_small ~ s(directedfish_biomass, k = 4) + 
+                            s(mature_abundance_small, mature_abundance_large, k = 4) +
+                            s(lag3_MarApr_ice, k = 4),
+                            family = betar(link = "logit"), 
+                            method =  "REML", 
+                            data = model.dat)
+  
+  small.main.icelag.aa <- gam(propmature_small ~ s(directedfish_biomass, k = 4) + 
+                             s(mature_abundance_small, k = 4) +
+                             s(mature_abundance_large, k = 4) +
+                             s(lag3_MarApr_ice, k = 4),
+                             family = betar(link = "logit"), 
+                             method =  "REML", 
+                             data = model.dat)
+  
+  small.int.iceabundlag.aa <- gam(propmature_small ~ s(directedfish_biomass, k = 4) + 
+                            s(lag1_mature_abundance_small, lag1_mature_abundance_large, k = 4) +
+                            s(lag3_MarApr_ice, k = 4),
+                            family = betar(link = "logit"), 
+                          data = model.dat)
+  
+  small.main.iceabundlag.aa <- gam(propmature_small ~ s(directedfish_biomass, k = 4) + 
+                             s(lag1_mature_abundance_small, k = 4) +
+                             s(lag1_mature_abundance_large, k = 4) +
+                             s(lag3_MarApr_ice, k = 4),
+                             family = betar(link = "logit"), 
+                           method =  "REML", 
+                           data = model.dat)
+ 
+  # biomass covariates ----
+  small.int.nolag.bb <- gam(propmature_small ~ s(directedfish_biomass, k = 4) + 
+                              s(mature_biomass_small, mature_biomass_large, k = 4) +
+                              s(MarApr_ice, k = 4),
+                            family = betar(link = "logit"), 
+                            method =  "REML", 
+                            data = model.dat)
+  
+  
+  small.main.nolag.bb <- gam(propmature_small ~ s(directedfish_biomass, k = 4) + 
+                               s(mature_biomass_small, k = 4) +
+                               s(mature_biomass_large, k = 4) +
+                               s(MarApr_ice, k = 4),
+                             family = betar(link = "logit"), 
+                             method =  "REML", 
+                             data = model.dat)
+  
+  small.int.lagabund.bb <- gam(propmature_small ~ s(directedfish_biomass, k = 4) + 
+                                 s(lag1_mature_biomass_small, lag1_mature_biomass_large, k = 4) +
+                                 s(MarApr_ice, k = 4),
+                               family = betar(link = "logit"), 
+                               method =  "REML", 
+                               data = model.dat)
+  
+  small.main.lagabund.bb <- gam(propmature_small ~ s(directedfish_biomass, k = 4) + 
+                                  s(lag1_mature_biomass_small, k = 4) +
+                                  s(lag1_mature_biomass_large, k = 4) +
+                                  s(MarApr_ice, k = 4),
+                                family = betar(link = "logit"), 
+                                method =  "REML", 
+                                data = model.dat)
+  
+  small.int.icelag.bb <- gam(propmature_small ~ s(directedfish_biomass, k = 4) + 
+                               s(mature_biomass_small, mature_biomass_large, k = 4) +
+                               s(lag3_MarApr_ice, k = 4),
+                             family = betar(link = "logit"), 
+                             method =  "REML", 
+                             data = model.dat)
+  
+  small.main.icelag.bb <- gam(propmature_small ~ s(directedfish_biomass, k = 4) + 
+                                s(mature_biomass_small, k = 4) +
+                                s(mature_biomass_large, k = 4) +
+                                s(lag3_MarApr_ice, k = 4),
+                              family = betar(link = "logit"), 
+                              method =  "REML", 
+                              data = model.dat)
+  
+  small.int.iceabundlag.bb <- gam(propmature_small ~ s(directedfish_biomass, k = 4) + 
+                                    s(lag1_mature_biomass_small, lag1_mature_biomass_large, k = 4) +
+                                    s(lag3_MarApr_ice, k = 4),
+                                  family = betar(link = "logit"), 
+                                  data = model.dat)
+  
+  small.main.iceabundlag.bb <- gam(propmature_small ~ s(directedfish_biomass, k = 4) + 
+                                     s(lag1_mature_biomass_small, k = 4) +
+                                     s(lag1_mature_biomass_large, k = 4) +
+                                     s(lag3_MarApr_ice, k = 4),
+                                   family = betar(link = "logit"), 
+                                   method =  "REML", 
+                                   data = model.dat)
+  
+  # model comparison ----
+  AICc(small.int.nolag.aa, small.main.nolag.aa, small.int.lagabund.aa, small.main.lagabund.aa, 
+       small.int.icelag.aa, small.main.icelag.aa, small.int.iceabundlag.aa, small.main.iceabundlag.aa,
+       small.int.nolag.bb, small.main.nolag.bb, small.int.lagabund.bb, small.main.lagabund.bb, 
+       small.int.icelag.bb, small.main.icelag.bb, small.int.iceabundlag.bb, small.main.iceabundlag.bb) %>%
+    mutate(BEST = case_when((AICc == min(AICc)) ~ "Y",
+                            TRUE ~ "N"))
+  
+  
+  # diagnostics ----
+  summary(small.int.nolag.bb)
+  gam.check(small.int.nolag.bb)
+  appraise(small.int.nolag.bb)
+  draw(small.int.nolag.bb)
+  
+  summary(small.main.nolag.bb)
+  gam.check(small.main.nolag.bb)
+  appraise(small.main.nolag.bb)
+  draw(small.main.nolag.bb)
+  
+  summary(small.int.nolag.aa)
+  gam.check(small.int.nolag.aa)
+  appraise(small.int.nolag.aa)
+  draw(small.int.nolag.aa)
+  
+  summary(small.main.nolag.aa)
+  gam.check(small.main.nolag.aa)
+  appraise(small.main.nolag.aa)
+  draw(small.main.nolag.aa)
+  
+  
 # proportion mature in large bin (95-105mm) ----
-large.dat <- model.dat %>% 
-              filter(bin == "Large (95-105mm)") %>%
-              distinct() %>%
-            na.omit()
-
-large.prop <- gam(prop_mature ~ s(directedfish_biomass, k = 4) + 
-                    s(small_male_biomass, k = 4) + s(large_male_biomass, k = 4) + s(MarApr_ice, k = 4), method = "REML", data = large.dat)
-
-large.prop.int <- gam(prop_mature ~ s(directedfish_biomass, k = 4) + 
-                    s(small_male_biomass, large_male_biomass_sh2, k = 4) + s(MarApr_ice, k = 4), method = "REML", data = large.dat)
-
-large.prop.beta <- gam(prop_mature ~ s(directedfish_biomass, k = 4) + 
-                    s(small_male_biomass, k = 4) + s(large_male_biomass_sh2, k = 4) + s(MarApr_ice, k = 4), family = betar(link = "logit"), method = "REML",
-                    data = large.dat)
-
-
-large.prop.beta.int <- gam(prop_mature ~ s(directedfish_biomass, k = 4) + 
-                       s(small_male_biomass, large_male_biomass_sh2, k = 4) + s(MarApr_ice, k = 4), family = betar(link = "logit"), method = "REML",
-                     data = large.dat)
-
-AICc(large.prop, large.prop.int, large.prop.beta, large.prop.beta.int)
-
-# diagnostics
-summary(large.prop)
-gam.check(large.prop)
-appraise(large.prop)
-draw(large.prop)
-
-summary(large.prop.int)
-gam.check(large.prop.int)
-appraise(large.prop.int)
-draw(large.prop.int)
-
-summary(large.prop.beta)
-gam.check(large.prop.beta)
-appraise(large.prop.beta)
-draw(large.prop.beta)
-
-summary(large.prop.beta.int)
-gam.check(large.prop.beta.int)
-appraise(large.prop.beta.int)
-draw(large.prop.beta.int)
-
+  # abundance covariates ----
+  large.int.nolag.aa<- gam(propmature_large ~ s(directedfish_biomass, k = 4) + 
+                           s(mature_abundance_small, mature_abundance_large, k = 4) +
+                           s(MarApr_ice, k = 4),
+                         family = betar(link = "logit"), 
+                         method =  "REML", 
+                         data = model.dat)
+  
+  large.main.nolag.aa <- gam(propmature_large ~ s(directedfish_biomass, k = 4) + 
+                            s(mature_abundance_small, k = 4) +
+                            s(mature_abundance_large, k = 4) +
+                            s(MarApr_ice, k = 4),
+                          family = betar(link = "logit"), 
+                          method =  "REML", 
+                          data = model.dat)
+  
+  large.int.lagabund.aa <- gam(propmature_large ~ s(directedfish_biomass, k = 4) + 
+                              s(lag1_mature_abundance_small, lag1_mature_abundance_large, k = 4) +
+                              s(MarApr_ice, k = 4),
+                            family = betar(link = "logit"), 
+                            method =  "REML", 
+                            data = model.dat)
+  
+  large.main.lagabund.aa <- gam(propmature_large ~ s(directedfish_biomass, k = 4) + 
+                               s(lag1_mature_abundance_small, k = 4) +
+                               s(lag1_mature_abundance_large, k = 4) +
+                               s(MarApr_ice, k = 4),
+                             family = betar(link = "logit"), 
+                             method =  "REML", 
+                             data = model.dat)
+  
+  large.int.icelag.aa <- gam(propmature_large ~ s(directedfish_biomass, k = 4) + 
+                            s(mature_abundance_small, mature_abundance_large, k = 4) +
+                            s(lag3_MarApr_ice, k = 4),
+                          family = betar(link = "logit"), 
+                          method =  "REML", 
+                          data = model.dat)
+  
+  large.main.icelag.aa <- gam(propmature_large ~ s(directedfish_biomass, k = 4) + 
+                             s(mature_abundance_small, k = 4) +
+                             s(mature_abundance_large, k = 4) +
+                             s(lag3_MarApr_ice, k = 4),
+                           family = betar(link = "logit"), 
+                           method =  "REML", 
+                           data = model.dat)
+  
+  large.int.iceabundlag.aa <- gam(propmature_large ~ s(directedfish_biomass, k = 4) + 
+                                 s(lag1_mature_abundance_small, lag1_mature_abundance_large, k = 4) +
+                                 s(lag3_MarApr_ice, k = 4),
+                               family = betar(link = "logit"), 
+                               method =  "REML", 
+                               data = model.dat)
+  
+  large.main.iceabundlag.aa <- gam(propmature_large ~ s(directedfish_biomass, k = 4) + 
+                                  s(lag1_mature_abundance_small, k = 4) +
+                                  s(lag1_mature_abundance_large, k = 4) +
+                                  s(lag3_MarApr_ice, k = 4),
+                                family = betar(link = "logit"), 
+                                method =  "REML", 
+                                data = model.dat)
+  
+  # biomass covariates ----
+  large.int.nolag.bb<- gam(propmature_large ~ s(directedfish_biomass, k = 4) + 
+                             s(mature_biomass_small, mature_biomass_large, k = 4) +
+                             s(MarApr_ice, k = 4),
+                           family = betar(link = "logit"), 
+                           method =  "REML", 
+                           data = model.dat)
+  
+  large.main.nolag.bb <- gam(propmature_large ~ s(directedfish_biomass, k = 4) + 
+                               s(mature_biomass_small, k = 4) +
+                               s(mature_biomass_large, k = 4) +
+                               s(MarApr_ice, k = 4),
+                             family = betar(link = "logit"), 
+                             method =  "REML", 
+                             data = model.dat)
+  
+  large.int.lagabund.bb <- gam(propmature_large ~ s(directedfish_biomass, k = 4) + 
+                                 s(lag1_mature_biomass_small, lag1_mature_biomass_large, k = 4) +
+                                 s(MarApr_ice, k = 4),
+                               family = betar(link = "logit"), 
+                               method =  "REML", 
+                               data = model.dat)
+  
+  large.main.lagabund.bb <- gam(propmature_large ~ s(directedfish_biomass, k = 4) + 
+                                  s(lag1_mature_biomass_small, k = 4) +
+                                  s(lag1_mature_biomass_large, k = 4) +
+                                  s(MarApr_ice, k = 4),
+                                family = betar(link = "logit"), 
+                                method =  "REML", 
+                                data = model.dat)
+  
+  large.int.icelag.bb <- gam(propmature_large ~ s(directedfish_biomass, k = 4) + 
+                               s(mature_biomass_small, mature_biomass_large, k = 4) +
+                               s(lag3_MarApr_ice, k = 4),
+                             family = betar(link = "logit"), 
+                             method =  "REML", 
+                             data = model.dat)
+  
+  large.main.icelag.bb <- gam(propmature_large ~ s(directedfish_biomass, k = 4) + 
+                                s(mature_biomass_small, k = 4) +
+                                s(mature_biomass_large, k = 4) +
+                                s(lag3_MarApr_ice, k = 4),
+                              family = betar(link = "logit"), 
+                              method =  "REML", 
+                              data = model.dat)
+  
+  large.int.iceabundlag.bb <- gam(propmature_large ~ s(directedfish_biomass, k = 4) + 
+                                    s(lag1_mature_biomass_small, lag1_mature_biomass_large, k = 4) +
+                                    s(lag3_MarApr_ice, k = 4),
+                                  family = betar(link = "logit"), 
+                                  method =  "REML", 
+                                  data = model.dat)
+  
+  large.main.iceabundlag.bb <- gam(propmature_large ~ s(directedfish_biomass, k = 4) + 
+                                     s(lag1_mature_biomass_small, k = 4) +
+                                     s(lag1_mature_biomass_large, k = 4) +
+                                     s(lag3_MarApr_ice, k = 4),
+                                   family = betar(link = "logit"), 
+                                   method =  "REML", 
+                                   data = model.dat)
+  
+  # model comparison ----
+  AICc(large.int.nolag.aa, large.main.nolag.aa, large.int.lagabund.aa, large.main.lagabund.aa, 
+       large.int.icelag.aa, large.main.icelag.aa, large.int.iceabundlag.aa, large.main.iceabundlag.aa,
+       large.int.nolag.bb, large.main.nolag.bb, large.int.lagabund.bb, large.main.lagabund.bb, 
+       large.int.icelag.bb, large.main.icelag.bb, large.int.iceabundlag.bb, large.main.iceabundlag.bb) %>%
+    mutate(BEST = case_when((AICc == min(AICc)) ~ "Y",
+                            TRUE ~ "N"))
+  
+  
+  # diagnostics ----
+  summary(large.int.nolag.aa)
+  gam.check(large.int.nolag.aa)
+  appraise(large.int.nolag.aa)
+  draw(large.int.nolag.aa)
+  
+  summary(large.main.nolag.aa)
+  gam.check(large.main.nolag.aa)
+  appraise(large.main.nolag.aa)
+  draw(large.main.nolag.aa)
+  
+  summary(large.int.nolag.bb)
+  gam.check(large.int.nolag.bb)
+  appraise(large.int.nolag.bb)
+  draw(large.int.nolag.bb)
+  
+  summary(large.main.nolag.bb)
+  gam.check(large.main.nolag.bb)
+  appraise(large.main.nolag.bb)
+  draw(large.main.nolag.bb)
+  
 # size at maturity ----
-SaM.dat <- model.dat %>%
-              dplyr::select(!c(bin, total_crab, total_mature, prop_mature)) %>%
-              distinct() %>%
-           na.omit()
+  # abundance covariates ----
+  SAM.int.nolag.aa<- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
+                          s(mature_abundance_small, mature_abundance_large, k = 4) +
+                          s(MarApr_ice, k = 4),
+                          method =  "REML", 
+                          data = model.dat)
+  
+  SAM.main.nolag.aa <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
+                               s(mature_abundance_small, k = 4) +
+                               s(mature_abundance_large, k = 4) +
+                               s(MarApr_ice, k = 4),
+                             method =  "REML", 
+                             data = model.dat)
+  
+  SAM.int.lagabund.aa <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
+                                 s(lag1_mature_abundance_small, lag1_mature_abundance_large, k = 4) +
+                                 s(MarApr_ice, k = 4),
+                               method =  "REML", 
+                               data = model.dat)
+  
+  SAM.main.lagabund.aa <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
+                                  s(lag1_mature_abundance_small, k = 4) +
+                                  s(lag1_mature_abundance_large, k = 4) +
+                                  s(MarApr_ice, k = 4),
+                                method =  "REML", 
+                                data = model.dat)
+  
+  SAM.int.icelag.aa <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
+                               s(mature_abundance_small, mature_abundance_large, k = 4) +
+                               s(lag3_MarApr_ice, k = 4),
+                             method =  "REML", 
+                             data = model.dat)
+  
+  SAM.main.icelag.aa <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
+                                s(mature_abundance_small, k = 4) +
+                                s(mature_abundance_large, k = 4) +
+                                s(lag3_MarApr_ice, k = 4),
+                              method =  "REML", 
+                              data = model.dat)
+  
+  SAM.int.iceabundlag.aa <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
+                                    s(lag1_mature_abundance_small, lag1_mature_abundance_large, k = 4) +
+                                    s(lag3_MarApr_ice, k = 4),
+                                  method =  "REML", 
+                                  data = model.dat)
+  
+  SAM.main.iceabundlag.aa <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
+                                     s(lag1_mature_abundance_small, k = 4) +
+                                     s(lag1_mature_abundance_large, k = 4) +
+                                     s(lag3_MarApr_ice, k = 4),
+                                   method =  "REML", 
+                                   data = model.dat)
+  
+  # biomass covariates ----
+  SAM.int.nolag.bb<- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
+                           s(mature_biomass_small, mature_biomass_large, k = 4) +
+                           s(MarApr_ice, k = 4),
+                         method =  "REML", 
+                         data = model.dat)
+  
+  SAM.main.nolag.bb <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
+                             s(mature_biomass_small, k = 4) +
+                             s(mature_biomass_large, k = 4) +
+                             s(MarApr_ice, k = 4),
+                           method =  "REML", 
+                           data = model.dat)
+  
+  SAM.int.lagabund.bb <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
+                               s(lag1_mature_biomass_small, lag1_mature_biomass_large, k = 4) +
+                               s(MarApr_ice, k = 4),
+                             method =  "REML", 
+                             data = model.dat)
+  
+  SAM.main.lagabund.bb <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
+                                s(lag1_mature_biomass_small, k = 4) +
+                                s(lag1_mature_biomass_large, k = 4) +
+                                s(MarApr_ice, k = 4),
+                              method =  "REML", 
+                              data = model.dat)
+  
+  SAM.int.icelag.bb <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
+                             s(mature_biomass_small, mature_biomass_large, k = 4) +
+                             s(lag3_MarApr_ice, k = 4),
+                           method =  "REML", 
+                           data = model.dat)
+  
+  SAM.main.icelag.bb <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
+                              s(mature_biomass_small, k = 4) +
+                              s(mature_biomass_large, k = 4) +
+                              s(lag3_MarApr_ice, k = 4),
+                            method =  "REML", 
+                            data = model.dat)
+  
+  SAM.int.iceabundlag.bb <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
+                                  s(lag1_mature_biomass_small, lag1_mature_biomass_large, k = 4) +
+                                  s(lag3_MarApr_ice, k = 4),
+                                method =  "REML", 
+                                data = model.dat)
+  
+  SAM.main.iceabundlag.bb <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
+                                   s(lag1_mature_biomass_small, k = 4) +
+                                   s(lag1_mature_biomass_large, k = 4) +
+                                   s(lag3_MarApr_ice, k = 4),
+                                 method =  "REML", 
+                                 data = model.dat)
+  
+ # model comparison ----
+  AICc(SAM.int.nolag.aa, SAM.main.nolag.aa, SAM.int.lagabund.aa, SAM.main.lagabund.aa, 
+       SAM.int.icelag.aa, SAM.main.icelag.aa, SAM.int.iceabundlag.aa, SAM.main.iceabundlag.aa,
+       SAM.int.nolag.bb, SAM.main.nolag.bb, SAM.int.lagabund.bb, SAM.main.lagabund.bb, 
+       SAM.int.icelag.bb, SAM.main.icelag.bb, SAM.int.iceabundlag.bb, SAM.main.iceabundlag.bb) %>%
+    mutate(BEST = case_when((AICc == min(AICc)) ~ "Y",
+                            TRUE ~ "N"))
 
-SaM.mod <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + s(small_male_biomass, k = 4) + 
-                 s(large_male_biomass_sh2, k = 4) + s(MarApr_ice, k = 4), method = "REML", data = SaM.dat)
-SaM.mod.int <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
-                     s(small_male_biomass, large_male_biomass_sh2, k = 4) + s(MarApr_ice, k = 4), method = "REML", data = SaM.dat)
+ # diagnostics ----
+summary(SAM.main.icelag.aa)
+gam.check(SAM.main.icelag.aa)
+appraise(SAM.main.icelag.aa)
+draw(SAM.main.icelag.aa)
 
-SaM.mod.tw.int <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
-                     s(small_male_biomass, large_male_biomass_sh2, k = 4) + s(MarApr_ice, k = 4), family = tw(link = "log"), method = "REML", data = SaM.dat)
+summary(SAM.int.icelag.aa)
+gam.check(SAM.int.icelag.aa)
+appraise(SAM.int.icelag.aa)
+draw(SAM.int.icelag.aa)
 
-AICc(SaM.mod, SaM.mod.int, SaM.mod.tw.int)
+summary(SAM.main.icelag.bb)
+gam.check(SAM.main.icelag.bb)
+appraise(SAM.main.icelag.bb)
+draw(SAM.main.icelag.bb)
 
-# diagnostics
-summary(SaM.mod)
-gam.check(SaM.mod)
-appraise(SaM.mod)
-draw(SaM.mod)
+summary(SAM.int.icelag.bb)
+gam.check(SAM.int.icelag.bb)
+appraise(SAM.int.icelag.bb)
+draw(SAM.int.icelag.bb)
 
-summary(SaM.mod.int)
-gam.check(SaM.mod.int)
-appraise(SaM.mod.int)
-draw(SaM.mod.int)
-
-summary(SaM.mod.tw.int)
-gam.check(SaM.mod.tw.int)
-appraise(SaM.mod.tw.int)
-draw(SaM.mod.tw.int)
 
