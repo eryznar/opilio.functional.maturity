@@ -19,7 +19,19 @@ params <- read.csv("./Output/maturity_model_params.csv") # maturity model parame
 
 params <- readRDS("./Data/snow_survey_maturityEBS.rda")$model_parameters
 
-## CALCULATE MORPHOMETRIC MATURITY BIOMASS/ABUNDANCE -------------------------------------------------------
+## CALCULATE MORPHOMETRIC MATURITY BIOMASS/ABUNDANCE (just for chela-measured crab!!) -------------------------------------------------------
+morph.dat <- 
+  morph.dat <- readRDS("./Data/snow_survey_specimenEBS.rda")$specimen %>%
+  filter(HAUL_TYPE !=17, SEX == 1, SHELL_CONDITION == 2, is.na(CHELA_HEIGHT) == FALSE, SIZE_1MM>40) %>%
+  mutate(CUTOFF = BETA0 + BETA1*(log(SIZE_1MM)),
+         MATURE = case_when((log(CHELA_HEIGHT) > CUTOFF) ~ 1,
+                            TRUE ~ 0)) %>%
+  dplyr::select(YEAR, SIZE_1MM, MATURE) %>%
+  rename(Year = YEAR) 
+
+
+
+
 # aggregate data into 1mm bins, apply mat model params 
 morph.dat <- spec %>% # this data already has 1MM size bins
               right_join(params, .) %>% # join in model params
