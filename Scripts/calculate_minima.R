@@ -7,7 +7,7 @@
 source("./Scripts/load_libs_params.R")
 
 # Read in Shannon's chela data
-chela <- read.csv("./Data/snow_chela_UPDATED.csv") %>% # already != HT 17, only shell 2, no spec
+chela <- read.csv("./Data/snow_chela_UPDATED.csv") %>% # already != HT 17, only shell 2, no special projects
   mutate(RATIO = SIZE/CHELA_HEIGHT) %>% 
   filter(RATIO >= 2 & RATIO <= 30) # filter extreme measurements
 
