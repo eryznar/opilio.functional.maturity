@@ -90,6 +90,8 @@ model.dat <- right_join(df.dat, abund.bin.dat) %>%
                    lag1_mature_biomass_large = lag(mature_biomass_large, n = 1),
                    lag3_MarApr_ice = lag(MarApr_ice, n = 3))
 
+write.csv(model.dat, "./Data/snow_male_GAM_modeldat.csv")
+
 # FIT MODELS ---------------------------------------------------------------------------------------------
 # proportion mature in small bin (55-65) ----
   # abundance covariates ----
