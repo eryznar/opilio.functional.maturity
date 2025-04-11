@@ -55,6 +55,17 @@ abund_95.105 <- calc_bioabund(crab_data = spec,
 
 write.csv(rbind(abund_55.65, abund_95.105), "./Data/surveyabund_snowmales55.105.csv")
 
+# Get all male biomass/abundance
+spec <- readRDS("./Data/snow_survey_specimenEBS.rda")
+male_bioabund <- calc_bioabund(crab_data = spec, 
+                             sex = "male", 
+                             region = "EBS", 
+                             district = "ALL",
+                             species = "SNOW") 
+
+write.csv(male_bioabund, "./Data/allmalesnow_surveybioabund.csv")
+
+
 # Get small, medium, large mature female abundance/biomass
 spec <- readRDS("./Data/snow_survey_specimenEBS.rda")
 fem_abund_40.50 <- calc_bioabund(crab_data = spec, 
