@@ -4,7 +4,6 @@ source("./Scripts/load_libs_params.R")
 
 
 # Connect to Oracle via AFSC database (NOAA AFSC users only)
-#channel <- crabpack::get_connected(db = "AFSC") #username: CRABBASE, pass: Chionoecetes_24
 channel <- "API"
 
 # Pull specimen data
@@ -55,6 +54,41 @@ abund_95.105 <- calc_bioabund(crab_data = spec,
                 mutate(bin = "Large (95-105mm)")
 
 write.csv(rbind(abund_55.65, abund_95.105), "./Data/surveyabund_snowmales55.105.csv")
+
+# Get small, medium, large mature female abundance/biomass
+spec <- readRDS("./Data/snow_survey_specimenEBS.rda")
+fem_abund_40.50 <- calc_bioabund(crab_data = spec, 
+                             sex = "female", 
+                             region = "EBS", 
+                             district = "ALL",
+                             species = "SNOW", 
+                             size_min = 40, 
+                             size_max = 50, 
+                             shell_condition = "new_hardshell") %>%
+  mutate(bin = "Small (40-50mm)")
+
+fem_abund_50.60 <- calc_bioabund(crab_data = spec, 
+                                 sex = "female", 
+                                 region = "EBS", 
+                                 district = "ALL",
+                                 species = "SNOW", 
+                                 size_min = 50, 
+                                 size_max = 60, 
+                                 shell_condition = "new_hardshell") %>%
+  mutate(bin = "Medium (50-60mm)")
+
+fem_abund_60.70 <- calc_bioabund(crab_data = spec, 
+                                 sex = "female", 
+                                 region = "EBS", 
+                                 district = "ALL",
+                                 species = "SNOW", 
+                                 size_min = 60, 
+                                 size_max = 70, 
+                                 shell_condition = "new_hardshell") %>%
+  mutate(bin = "Large (60-70mm)")
+
+write.csv(rbind(fem_abund_40.50, fem_abund_50.60, fem_abund_60.70), "./Data/surveyabund_snowfemales40.70.csv")
+
 
 
 # TANNER
