@@ -389,6 +389,12 @@ appraise(large.main.lagabund.aa)
 draw(large.main.lagabund.aa)
 
 
+summary(large.main.lagabund.bb)
+gam.check(large.main.lagabund.bb)
+appraise(large.main.lagabund.bb)
+draw(large.main.lagabund.bb)
+
+
 # size at maturity ----
 # abundance covariates ----
 SAM.int.nolag.aa<- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
