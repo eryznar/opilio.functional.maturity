@@ -9,10 +9,10 @@ source("./Scripts/load_libs_params.R")
 # Read in Shannon's chela data
 chela <- read.csv("./Data/snow_chela_UPDATED.csv") %>% # already != HT 17, only shell 2, no special projects
   mutate(RATIO = SIZE/CHELA_HEIGHT) %>% 
-  filter(RATIO >= 2 & RATIO <= 30) # filter extreme measurements
+  filter(RATIO > 2 & RATIO < 35) # filter extreme measurements
 
 # Pool and transform data using natural log
-sh.dat %>%
+chela %>%
   mutate(LN_CW = log(SIZE),
          LN_CH = log(CHELA_HEIGHT)) -> chela2
 
@@ -33,7 +33,7 @@ bins <- unique(bin.dat$BIN)
 
 min.dat <- data.frame()
 
-bandwidth <- 0.03 # can adjust this for kernal smoothing (lower = less smooth)
+bandwidth <- 0.04 # can adjust this for kernal smoothing (lower = less smooth)
 
 for(ii in 1:length(bins)){
   # filter data by bin of interest
