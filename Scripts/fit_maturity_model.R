@@ -205,8 +205,9 @@ dummy <- data.frame(SPECIES = "SNOW", REGION = "EBS", DISTRICT = "ALL", YEAR = m
 params <- rbind(params, dummy)
 
 ggplot(preds, aes(MIDPOINT, PROP_MATURE, group = YEAR, color = "YEAR"))+
-  geom_line(aes(color = YEAR))+
+  geom_line(aes(color = YEAR), linewidth = 1)+
   theme_bw()+
+  scale_color_gradient2(low = "cadetblue", midpoint = 2006, high = "darkred")+
   geom_hline(yintercept = 0.5, linetype = "dashed", color = "blue")+
   ggtitle("Proportion mature at size")+
   ylab("Proportion mature")+
