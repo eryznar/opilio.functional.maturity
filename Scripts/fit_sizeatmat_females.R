@@ -5,6 +5,14 @@ source("./Scripts/load_libs_params.R")
 spec.dat <- readRDS("./Data/snow_survey_specimenEBS.rda")$specimen %>%
   filter(HAUL_TYPE !=17, SEX == 2, SHELL_CONDITION == 2) # filter for females, sh2, not HT17
 
+plot.dat <- spec.dat %>% filter(YEAR>1988, CLUTCH_SIZE >0)
+ggplot()+
+  geom_histogram(plot.dat %>% filter(YEAR>1988), mapping = aes(SIZE_1MM), fill = "lightgrey", color = "black")+
+  scale_x_continuous(breaks = seq(min(plot.dat$SIZE_1MM), max(plot.dat$SIZE_1MM), by = 10))+
+  theme_bw()+
+  facet_wrap(~YEAR, scales = "free")
+  
+
 
 haul <- readRDS("./Data/snow_survey_specimenEBS.rda")$haul %>%
   filter(#YEAR %in% c(2010, 2017, 2018, 2019) # years Jon uses for stock assessment estimates?,
@@ -17,7 +25,7 @@ haul %>%
 
 # Survey specimen data
 prop.dat <- spec.dat %>%
-  filter(SIZE >= 15 & SIZE <= 85) %>%
+  #filter(SIZE >= 15 & SIZE <= 85) %>%
   #dplyr::select(colnames(chela_10.13)) %>%
   mutate(MATURE = case_when((CLUTCH_SIZE > 0) ~ 1,
                             TRUE ~ 0),
@@ -50,7 +58,7 @@ for(ii in 1:length(yrs)){
   print(paste("Fitting year", yrs[ii]))
   
   #filter by year
-  bin.dat %>%
+  prop.dat %>%
     filter(YEAR == yrs[ii]) -> mod.dat
   
   #fit nls model
@@ -90,6 +98,9 @@ for(ii in 1:length(yrs)){
   
 }
 
+
+write.csv(params, "./Output/female_maturity_model_params.csv")
+
 ##Plot maturity ogives
 miss_yr <- c(2020)
 
@@ -97,15 +108,16 @@ dummy <- data.frame(SPECIES = "SNOW", REGION = "EBS", DISTRICT = "ALL", YEAR = m
 
 params <- rbind(params, dummy)
 
-ggplot(preds, aes(MIDPOINT, PROP_MATURE, group = as.factor(YEAR), color = as.factor("YEAR")))+
-  geom_line(aes(color = YEAR))+
+ggplot(preds, aes(MIDPOINT, PROP_MATURE, group = YEAR, color = YEAR))+
+  geom_line(aes(color = YEAR), linewidth = 1)+
   theme_bw()+
   geom_hline(yintercept = 0.5, linetype = "dashed", color = "blue")+
   ggtitle("Proportion mature at size")+
   ylab("Proportion mature (female)")+
   xlab("Carapace width (mm)")+
-  scale_color_viridis_c()+
-  scale_x_continuous(breaks = seq(min(preds$MIDPOINT), max(preds$MIDPOINT), by = 2))+
+  scale_color_gradient2(low = "cadetblue", midpoint = 2006, high = "darkred")+
+  #scale_color_viridis_d()+
+  scale_x_continuous(breaks = seq(min(preds$MIDPOINT), max(preds$MIDPOINT), by = 5))+
   theme(axis.text = element_text(size = 12),
         axis.title = element_text(size = 12))
 
