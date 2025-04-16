@@ -24,6 +24,8 @@ library("rnaturalearth")
 library(patchwork)
 library(gratia)
 library(MuMIn)
+library(DHARMa)
+library(mgcViz)
 
 
 # Read in survey data
@@ -51,4 +53,28 @@ minima <- read.csv("./Output/opilio_cutline_minima.csv") %>%
 
 BETA0 <- unique(minima$BETA0)
 BETA1 <- unique(minima$BETA1)
+
+# Functions
+diagnose <- function(model){
+  model.name <- deparse(substitute(model))
+  
+  ss <- summary(model) # model summary
+  
+  gam.check(model) # make sure smooth terms are appropriate
+  
+  plot(simulateResiduals(model)) # Checks uniformity, dispersion, outliers via DHARMa
+
+    # plot facetted smooths
+  sm.dat <- smooth_estimates(model) %>%
+    pivot_longer(., cols = 6:9, names_to = "resp", values_to = "value")
+  
+  ggplot(sm.dat, aes(x = value, y = .estimate)) +
+    geom_ribbon(sm.dat, mapping = aes(ymin = .estimate + 2 * .se, ymax = .estimate - 2 * .se), fill = "cadetblue", alpha = 0.25)+
+    geom_line(color = "cadetblue", linewidth = 1.25) +
+    facet_wrap(~ .smooth, scales = "free_x") +   # facet by smooth term name
+    theme_bw()+
+    ggtitle(model.name) -> sm.plot
+  
+  return(list(ss, sm.plot))
+}
 
