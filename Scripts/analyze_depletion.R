@@ -20,7 +20,7 @@ bin.dat <- readRDS("./Data/snow_survey_specimenEBS.rda")$specimen %>%
                 filter(HAUL_TYPE !=17, SEX == 1, SHELL_CONDITION == 2, is.na(CHELA_HEIGHT) == FALSE) %>% # filter for males, sh2, only chela msrd, not HT17
                 #rbind(., chela_10.13) %>% # bind with 2010, 2013 chela data from Shannon (chela weight tables)
                 mutate(RATIO = SIZE/CHELA_HEIGHT) %>%
-                filter(RATIO > 2 & RATIO < 305) %>% # filter extreme measurements
+                filter(RATIO > 2 & RATIO < 35) %>% # filter extreme measurements
                 dplyr::select(!c(RATIO)) %>%
                 mutate(CUTOFF = BETA0 + BETA1*(log(SIZE_1MM)), # apply cutline model
                        MATURE = case_when((log(CHELA_HEIGHT) > CUTOFF) ~ 1,
