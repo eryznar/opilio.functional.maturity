@@ -8,10 +8,10 @@ df.dat <- read.csv("./Data/opilio_directedfishery_catch.csv") %>%
   mutate(directedfish_biomass = Retained_kt + Discarded_males_kt) %>%
   dplyr::select(Year, directedfish_biomass)
 
-# Shannon chela data (just for 2010 and 2013 bc these are not in crabpack spec tables)
-chela_10.13 <- read.csv("./Data/snow_chela_UPDATED.csv") %>% # already != HT 17, only shell 2, no special projects
-                filter(YEAR %in% c(2010, 2013)) %>%
-                dplyr::select(!DATASET) 
+# # Shannon chela data (just for 2010 and 2013 bc these are not in crabpack spec tables)
+# chela_10.13 <- read.csv("./Data/snow_chela_UPDATED.csv") %>% # already != HT 17, only shell 2, no special projects
+#                 filter(YEAR %in% c(2010, 2013)) %>%
+#                 dplyr::select(!DATASET) 
                 
 
 # Survey specimen data
@@ -226,26 +226,17 @@ write.csv(model.dat, "./Data/snow_male_GAM_modeldat.csv")
   
   
   # diagnostics ----
-  summary(small.int.nolag.bb)
-  gam.check(small.int.nolag.bb)
-  appraise(small.int.nolag.bb)
-  draw(small.int.nolag.bb)
+  diagnose(small.int.nolag.bb)
   
-  summary(small.main.nolag.bb)
-  gam.check(small.main.nolag.bb)
-  appraise(small.main.nolag.bb)
-  draw(small.main.nolag.bb)
   
-  summary(small.int.nolag.aa)
-  gam.check(small.int.nolag.aa)
-  appraise(small.int.nolag.aa)
-  draw(small.int.nolag.aa)
+  diagnose(small.main.nolag.bb)
   
-  summary(small.main.nolag.aa)
-  gam.check(small.main.nolag.aa)
-  appraise(small.main.nolag.aa)
-  draw(small.main.nolag.aa)
   
+  diagnose(small.int.nolag.aa)
+
+  
+  diagnose(small.main.nolag.aa)
+ 
   
 # proportion mature in large bin (95-105mm) ----
   # abundance covariates ----
@@ -380,25 +371,11 @@ write.csv(model.dat, "./Data/snow_male_GAM_modeldat.csv")
   
   
   # diagnostics ----
-  summary(large.int.nolag.bb)
-  gam.check(large.int.nolag.bb)
-  appraise(large.int.nolag.bb)
-  draw(large.int.nolag.bb)
-  
-  summary(large.main.nolag.bb)
-  gam.check(large.main.nolag.bb)
-  appraise(large.main.nolag.bb)
-  draw(large.main.nolag.bb)
-  
-  summary(large.int.nolag.aa)
-  gam.check(large.int.nolag.aa)
-  appraise(large.int.nolag.aa)
-  draw(large.int.nolag.aa)
-  
-  summary(large.main.nolag.aa)
-  gam.check(large.main.nolag.aa)
-  appraise(large.main.nolag.aa)
-  draw(large.main.nolag.aa)
+  diagnose(large.int.nolag.bb)
+  diagnose(large.main.nolag.bb)
+ 
+  diagnose(large.int.nolag.aa)
+  diagnose(large.main.nolag.aa)
   
   
 # size at maturity ----
