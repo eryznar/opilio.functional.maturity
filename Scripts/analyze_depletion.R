@@ -15,29 +15,33 @@ df.dat <- read.csv("./Data/opilio_directedfishery_catch.csv") %>%
                 
 
 # Survey specimen data
-bin.dat <- readRDS("./Data/snow_survey_specimenEBS.rda")$specimen %>%
-                #dplyr::select(colnames(chela_10.13)) %>%
-                filter(HAUL_TYPE !=17, SEX == 1, SHELL_CONDITION == 2, is.na(CHELA_HEIGHT) == FALSE) %>% # filter for males, sh2, only chela msrd, not HT17
-                #rbind(., chela_10.13) %>% # bind with 2010, 2013 chela data from Shannon (chela weight tables)
-                mutate(RATIO = SIZE/CHELA_HEIGHT) %>%
-                filter(RATIO > 2 & RATIO < 35) %>% # filter extreme measurements
-                dplyr::select(!c(RATIO)) %>%
-                mutate(CUTOFF = BETA0 + BETA1*(log(SIZE_1MM)), # apply cutline model
-                       MATURE = case_when((log(CHELA_HEIGHT) > CUTOFF) ~ 1,
-                                          TRUE ~ 0)) %>%
-                dplyr::select(YEAR, SIZE_1MM, MATURE, SAMPLING_FACTOR, CALCULATED_WEIGHT_1MM) %>%
-                rename(Year = YEAR) %>%
-                mutate(bin = case_when((SIZE_1MM>=55 & SIZE_1MM<=65) ~ "Small (55-65mm)", # apply small and large bins for modeling below
-                                       (SIZE_1MM>=95 & SIZE_1MM<=105) ~ "Large (95-105mm)")) %>%
-                filter(is.na(bin) == FALSE) %>%
-                group_by(Year, bin) %>%
-                reframe(total_crab = sum(SAMPLING_FACTOR),
-                       total_kg = sum(SAMPLING_FACTOR*CALCULATED_WEIGHT_1MM)/1000,
-                       total_mature = sum(SAMPLING_FACTOR[MATURE == 1]), # summing the sampling factor of only crab that are mature in each bin
-                       total_mature_kg = sum(SAMPLING_FACTOR[MATURE == 1] * CALCULATED_WEIGHT_1MM[MATURE == 1])/1000,
-                       prop_mature = total_mature/total_crab,
-                       prop_mature_kg = total_mature_kg/total_kg)  # calculate proportion mature in each bin
-
+  readRDS("./Data/snow_survey_specimenEBS.rda")$specimen %>%
+            #dplyr::select(colnames(chela_10.13)) %>%
+            filter(HAUL_TYPE !=17, SEX == 1, SHELL_CONDITION == 2, is.na(CHELA_HEIGHT) == FALSE) %>% # filter for males, sh2, only chela msrd, not HT17
+            #rbind(., chela_10.13) %>% # bind with 2010, 2013 chela data from Shannon (chela weight tables)
+            mutate(RATIO = SIZE/CHELA_HEIGHT) %>%
+            filter(RATIO > 2 & RATIO < 35) %>% # filter extreme measurements
+            dplyr::select(!c(RATIO)) %>%
+            mutate(CUTOFF = BETA0 + BETA1*(log(SIZE_1MM)), # apply cutline model
+                   MATURE = case_when((log(CHELA_HEIGHT) > CUTOFF) ~ 1,
+                                      TRUE ~ 0),
+                   CPUE = SAMPLING_FACTOR/AREA_SWEPT,
+                   CPUE_KG = (CALCULATED_WEIGHT_1MM * SAMPLING_FACTOR)/1000) %>%
+            dplyr::select(YEAR, SIZE_1MM, MATURE, SAMPLING_FACTOR, CALCULATED_WEIGHT_1MM, CPUE, CPUE_KG) %>%
+            rename(Year = YEAR) %>%
+            { . ->> SAM.dat; . } %>%
+            mutate(bin = case_when((SIZE_1MM>=55 & SIZE_1MM<=65) ~ "Small (55-65mm)", # apply small and large bins for modeling below
+                                   (SIZE_1MM>=95 & SIZE_1MM<=105) ~ "Large (95-105mm)")) %>%
+            filter(is.na(bin) == FALSE) %>%
+            group_by(Year, bin) %>%
+            reframe(msrd_crab = n(),
+                   msrd_crab_kg =sum(CALCULATED_WEIGHT_1MM)/1000, # multiply by # msrd crab?? No
+                   mature_msrd_crab = sum(MATURE==1),
+                   mature_msrd_crab_kg = sum(CALCULATED_WEIGHT_1MM[MATURE==1])/1000,
+                   prop_mature = mature_msrd_crab/msrd_crab,
+                   prop_mature_kg = mature_msrd_crab_kg/msrd_crab_kg) %>% # summing the sampling factor of only crab that are mature in each bin
+            { . ->> bin.dat; . }
+          
 # Join binned survey specimen data with abundance from survey for same size bins
 abund.dat <- read.csv("./Data/surveyabund_snowmales55.105.csv") %>%
                 dplyr::select(YEAR, ABUNDANCE, BIOMASS_MT, bin) %>%
@@ -84,6 +88,7 @@ model.dat <- right_join(df.dat, abund.bin.dat) %>%
                    mature_abundance_large = log(mature_abundance_large + 1),
                    mature_biomass_small = log(mature_biomass_small + 1),
                    mature_biomass_large = log(mature_biomass_large + 1),
+                   size_at_mat = log(size_at_mat),
                    lag1_mature_abundance_small = lag(mature_abundance_small, n = 1),
                    lag1_mature_abundance_large = lag(mature_abundance_large, n = 1),
                    lag1_mature_biomass_small = lag(mature_biomass_small, n = 1),
@@ -411,6 +416,7 @@ write.csv(model.dat, "./Data/snow_male_GAM_modeldat.csv")
                                s(lag3_MarApr_ice, k = 4),
                              method =  "REML", 
                              data = model.dat)
+ 
   
   SAM.main.icelag.aa <- gam(size_at_mat ~ s(directedfish_biomass, k = 4) + 
                                 s(mature_abundance_small, k = 4) +
@@ -513,5 +519,4 @@ summary(SAM.int.icelag.bb)
 gam.check(SAM.int.icelag.bb)
 appraise(SAM.int.icelag.bb)
 draw(SAM.int.icelag.bb)
-
 

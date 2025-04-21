@@ -1,4 +1,4 @@
-survDAT<-read.csv("C:/Users/cody.szuwalski/Work/snow_2023_9/data/survey/EBSCrab_Haul/EBSCrab_Haul.csv",header=T,skip=5)
+#survDAT<-read.csv("C:/Users/cody.szuwalski/Work/snow_2023_9/data/survey/EBSCrab_Haul/EBSCrab_Haul.csv",header=T,skip=5)
 library(dplyr)
 library(mgcv)
 library(ggplot2)

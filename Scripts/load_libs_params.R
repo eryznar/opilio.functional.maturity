@@ -73,7 +73,12 @@ diagnose <- function(model){
     geom_line(color = "cadetblue", linewidth = 1.25) +
     facet_wrap(~ .smooth, scales = "free_x") +   # facet by smooth term name
     theme_bw()+
-    ggtitle(model.name) -> sm.plot
+    ggtitle(model.name)+
+    ylab("Partial effect")+
+    xlab("Value")+
+    theme(axis.text = element_text(size = 14),
+          axis.title = element_text(size = 14),
+          strip.text = element_text(size = 14)) -> sm.plot
   
   return(list(ss, sm.plot))
 }
