@@ -7,6 +7,16 @@ df.dat <- read.csv("./Data/opilio_directedfishery_catch.csv") %>%
   dplyr::select(Year, Retained_kt, Discarded_males_kt) %>%
   mutate(directedfish_biomass = Retained_kt + Discarded_males_kt) %>%
   dplyr::select(Year, directedfish_biomass)
+
+# Get survey cpue by 1mm bin for ALL shell 2 males, not just chela msrd
+snow_cpue <- calc_cpue(crab_data = readRDS("./Data/snow_survey_specimenEBS.rda"),
+                       species = "SNOW",
+                       years = years,
+                       sex = "male",
+                       shell_condition = "new_hardshell",
+                       bin_1mm = TRUE) %>%
+  mutate(CPUE_KG = CPUE_MT * 1000) %>%
+  dplyr::select(YEAR, STATION_ID, LATITUDE, LONGITUDE, SIZE_1MM, CPUE, CPUE_KG)
             
 
 # Survey specimen data
@@ -19,13 +29,14 @@ df.dat <- read.csv("./Data/opilio_directedfishery_catch.csv") %>%
             mutate(cutoff = BETA0 + BETA1*(log(SIZE)), # apply cutline model
                    mature = case_when((log(CHELA_HEIGHT) > cutoff) ~ 1,
                                       TRUE ~ 0),
-                   cpue = SAMPLING_FACTOR/AREA_SWEPT,
-                   cpue_kg = (CALCULATED_WEIGHT_1MM * SAMPLING_FACTOR)/1000) %>%
+                   SIZE_1MM = floor(SIZE)) %>% # 1mm bins
+            right_join(., snow_cpue) %>% # join to haul-level CPUE by 1mm size bins
+            filter(is.na(mature) == FALSE) %>% # omitting size 1mm bins from cpue dat not represented by chela msrments
             group_by(YEAR, SIZE_1MM) %>% # group by 1MM size bins
-            reframe(weighted_mature = sum(mature* cpue), # weight by cpue
-                    weighted_mature_kg = sum(mature * cpue_kg), # weight by cpue_kg
-                    weighted_total = sum(cpue),
-                    weighted_total_kg = sum(cpue_kg)) %>%
+            reframe(weighted_mature = sum(mature* CPUE), # weight by cpue
+                    weighted_mature_kg = sum(mature * CPUE_KG), # weight by cpue_kg
+                    total_cpue = sum(CPUE),
+                    total_cpue_kg = sum(CPUE_KG)) %>%
             rename(Year = YEAR) %>%
             { . ->> SAM.dat; . } %>%
             mutate(bin = case_when((SIZE_1MM>=55 & SIZE_1MM<=65) ~ "Small (55-65mm)", # apply small and large bins for modeling below
@@ -34,10 +45,10 @@ df.dat <- read.csv("./Data/opilio_directedfishery_catch.csv") %>%
             group_by(Year, bin) %>%
             reframe(weighted_mature = sum(weighted_mature),
                     weighted_mature_kg = sum(weighted_mature_kg),
-                    weighted_total = sum(weighted_total),
-                    weighted_total_kg = sum(weighted_total_kg),
-                    prop_mature = weighted_mature/weighted_total,
-                    prop_mature_kg = weighted_mature_kg/weighted_total_kg) %>% 
+                    total_cpue = sum(total_cpue),
+                    total_cpue_kg = sum(total_cpue_kg),
+                    prop_mature = weighted_mature/total_cpue,
+                    prop_mature_kg = weighted_mature_kg/total_cpue_kg) %>% 
             { . ->> bin.dat; . }
           
 # Join binned survey specimen data with abundance from survey for same size bins
