@@ -422,7 +422,7 @@ rbind(bin.10mm, bin.5mm) -> plot.dat
   
 write.csv(unweighted.propmature, "./Output/snow_unweighted_propmature.csv")
 # Plot 6: Sample size by year ----
-  cp_chela %>%
+  sh_chela %>%
     filter(YEAR %in% years)  %>%
     group_by(YEAR) %>%
     reframe(N = n()) -> plot.dat
