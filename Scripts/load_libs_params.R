@@ -56,6 +56,14 @@ minima <- read.csv("./Output/opilio_cutline_minima.csv") %>%
 BETA0 <- unique(minima$BETA0)
 BETA1 <- unique(minima$BETA1)
 
+# Arithmetic minima
+minima_arith <- read.csv("./Output/opilio_cutline_minima_arithmeticCW.csv") %>%
+  mutate(BETA0 = coef(lm(minima ~ midpoint))[1],
+         BETA1 = coef(lm(minima ~ midpoint))[2])
+
+BETA0_arith <- unique(minima_arith$BETA0)
+BETA1_arith <- unique(minima_arith$BETA1)
+
 # Functions
 diagnose <- function(model){
   model.name <- deparse(substitute(model))

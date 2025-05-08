@@ -152,8 +152,8 @@ chela %>%
 # Subset data into size intervals at ln(CW) of 0.025
 chela2 %>%
   #filter(LN_CW >= 3.9 & LN_CW <= 4.6) %>% # these were filtered out by Jon
-  filter(CW >= 45 & CW <= 105) %>% 
-  mutate(BIN = cut_width(CW, width = 5, center = 2.5, closed = "left", dig.lab = 4),
+  filter(CW > 55 & CW <= 106) %>% # "usable" data range in 1mm bins (i.e., there are distinct chela density peaks)
+  mutate(BIN = cut_width(CW, width = 1, center = 0.5, closed = "left", dig.lab = 4),
          BIN2 = BIN) %>%
   separate(BIN2, sep = ",", into = c("LOWER", "UPPER")) %>%
   mutate(LOWER = as.numeric(sub('.', '', LOWER)),
@@ -250,7 +250,7 @@ ggplot()+
   geom_point(min.dat2, mapping = aes(midpoint, minima))+
   #geom_density(plot.dat, mapping = aes(LN_CH), color = "red", linetype = "dashed", linewidth = 1)+
   theme_bw()+
-  annotate("text", x = 50, y = 3, label = paste0("R-squared = ", round(summary(mod)$r.squared, 2), "\np < 0.001"))+
+  annotate("text", x = 60, y = 3, label = paste0("R-squared = ", round(summary(mod)$r.squared, 2), "\np < 0.001"))+
   ylab("Cutline (ln(chela height))")+
   xlab("Carapace width bin midpoint (mm))")+
   theme(axis.text = element_text(size = 12),
