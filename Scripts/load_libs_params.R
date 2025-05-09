@@ -27,6 +27,8 @@ library(MuMIn)
 library(DHARMa)
 library(mgcViz)
 
+# Set years
+years <- c(1989:2007, 2009:2013, 2015, 2017:2019, 2021:2024)
 
 # Read in survey data
 specEBS <- readRDS("./Data/snow_survey_specimenEBS.rda")
@@ -93,3 +95,22 @@ diagnose <- function(model){
   return(list(ss, sm.plot))
 }
 
+
+# Data
+# minima data
+minima <- read.csv("./Output/opilio_cutline_minima.csv")
+minima_arith <- read.csv("./Output/opilio_cutline_minima_arithmeticCW.csv")
+
+# Chela data compiled by Shannon
+sh_chela <- read.csv(paste0(data_dir, "specimen_chela.csv")) %>% # already != HT 17, only shell 2, no special projects
+  filter(SPECIES == "SNOW", HAUL_TYPE !=17, SEX == 1, SHELL_CONDITION == 2, is.na(CHELA_HEIGHT) == FALSE,
+         YEAR %in% years) %>% # filter for males, sh2, only chela msrd, not HT17
+  mutate(ratio = SIZE/CHELA_HEIGHT,
+         LN_CH = log(CHELA_HEIGHT),
+         LN_CW = log(SIZE),
+         CW = SIZE) %>%
+  filter(ratio > 2 & ratio < 35) %>% # filter extreme measurements
+  dplyr::select(!c(ratio)) %>%
+  mutate(cutoff = BETA0 + BETA1*LN_CW, # apply cutline model
+         MATURE = case_when((LN_CH > cutoff) ~ 1,
+                            TRUE ~ 0))
