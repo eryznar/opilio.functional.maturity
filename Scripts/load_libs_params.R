@@ -114,3 +114,18 @@ sh_chela <- read.csv(paste0(data_dir, "specimen_chela.csv")) %>% # already != HT
   mutate(cutoff = BETA0 + BETA1*LN_CW, # apply cutline model
          MATURE = case_when((LN_CH > cutoff) ~ 1,
                             TRUE ~ 0))
+
+# crabpack chela
+cp_chela <- readRDS("./Data/snow_survey_specimenEBS.rda")$specimen %>%
+          #dplyr::select(colnames(chela_10.13)) %>%
+          filter(HAUL_TYPE !=17, SEX == 1, SHELL_CONDITION == 2, is.na(CHELA_HEIGHT) == FALSE,
+                 YEAR %in% years) %>% # filter for males, sh2, only chela msrd, not HT17
+          mutate(ratio = SIZE/CHELA_HEIGHT,
+                  LN_CH = log(CHELA_HEIGHT),
+                  LN_CW = log(SIZE),
+                  CW = SIZE) %>%
+          filter(ratio > 2 & ratio < 35) %>% # filter extreme measurements
+          dplyr::select(!c(ratio)) %>%
+          mutate(cutoff = BETA0 + BETA1*LN_CW, # apply cutline model
+                 MATURE = case_when((LN_CH > cutoff) ~ 1,
+                                    TRUE ~ 0))
