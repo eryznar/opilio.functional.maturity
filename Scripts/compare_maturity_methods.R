@@ -52,10 +52,10 @@ cp_chela <- readRDS("./Data/snow_survey_specimenEBS.rda")$specimen %>%
 
 # Plot 1: cutline with 2024 highlighted ----
 sh_chela %>%
-  filter(LN_CW >= 3.9 & LN_CW <= 4.6) -> plot.dat
+  filter(LN_CW >= 3.9 & LN_CW <= 4.6 & LN_CH > 1.5) -> plot.dat
 
 ggplot()+
-  geom_point(plot.dat, mapping = aes(LN_CW, LN_CH), alpha = 0.1)+
+  geom_point(plot.dat, mapping = aes(LN_CW, LN_CH, color = as.factor(MATURE)), alpha = 0.1)+
   theme_bw()+
   facet_wrap(~YEAR)+
   ylab("ln(chela height)")+
