@@ -227,7 +227,7 @@ ggplot(plot_dat2, aes(SIZE, prd, color = YEAR))+
 #   geom_line(linewidth = 1)+
 #   theme_bw()
 
-# Fit cpue-weighted binomial gam ----
+# Fit SF-weighted binomial gam ----
 mod.3 <- bam(MATURE ~ YEAR + s(SIZE), family = binomial(link = "logit"), data = mod.dat, weights = SAMPLING_FACTOR)
 
 prd <- predict(mod.3, data.frame(YEAR = mod.dat$YEAR, SIZE = mod.dat$SIZE),
@@ -290,8 +290,8 @@ unique(mod.dat$YEAR) %>%
 
 # get crabpack data for original size at mat ts using sigmoid model
 mat <- readRDS("./Data/snow_survey_maturityEBS.rda")$model_parameters %>%
-      dplyr::select(YEAR, B_EST) %>%
-      rename(year = YEAR, L50 = B_EST) %>%
+      dplyr::select(YEAR, B_EST, B_SE) %>%
+      rename(year = YEAR, L50 = B_EST, SE = B_SE) %>%
   mutate(type = "SF-weighted, legacy")
 
 
@@ -333,5 +333,74 @@ ggplot(l50.df, aes(year, L50, group = type, color = type))+
         legend.text = element_text(size = 12))
 
 ggsave("./Figures/size_at_50maturity_comparison.png", width = 11, height = 8.5)
+ll <- data.frame()
 
+sizemat <- function(model, type, year){
+  # Example code
+    new_data <- data.frame(YEAR = year,  SIZE = seq(min(mod.dat$SIZE), max(mod.dat$SIZE), length.out = 100))
+    
+    preds <- predict(model, newdata = new_data, type = "link", se.fit = TRUE)
+    
+    log_odds <- preds$fit
+    prob <- plogis(log_odds)  # Convert log-odds to probability
+    l50 <- new_data$SIZE[which.min(abs(prob - 0.5))]
+    
+    ll <-  data.frame(l50 = l50, yy = year,
+                               tt = type)
+  
+  
+  return(ll)
+}
+
+unique(mod.dat$YEAR) %>%
+purrr::map_df(~sizemat(mod.1, "Unweighted, binomial GAM", .)) -> out.1
+
+unique(mod.dat$YEAR) %>%
+  purrr::map_df(~sizemat(mod.2, "CPUE-weighted, binomial GAM", .)) -> out.2
+
+unique(mod.dat$YEAR) %>%
+  purrr::map_df(~sizemat(mod.3, "SF-weighted, binomial GAM", .)) -> out.3
+
+
+rbind(out.1, out.2, out.3) %>%
+  rename(L50 = l50, year = yy, type = tt) %>%
+  mutate(SE = NA) %>%
+  rbind(mat) %>%
+  filter(year != 2012) %>%
+  mutate(year = as.numeric(as.character(year))) -> bin.gam
+
+all.years <- data.frame(year = seq(min(bin.gam$year), max(bin.gam$year), by = 1))
+
+missing.yrs <- right_join(bin.gam, all.years) %>%
+  filter(is.na(L50) == TRUE) %>%
+  pull(year)
+
+
+bin.gam2<- rbind(bin.gam, data.frame(year = missing.yrs, L50 = rep(NA, 4*length(missing.yrs)), 
+                                     SE = rep(NA, 4*length(missing.yrs)),
+                                   type = rep(c("CPUE-weighted, binomial GAM", 
+                                                "Unweighted, binomial GAM", "SF-weighted, binomial GAM", 
+                                                "SF-weighted, legacy"), each = length(missing.yrs))))
+
+
+
+
+ggplot(bin.gam2, aes(year, L50, group = type, color = type))+
+  geom_point()+
+  geom_line()+
+  geom_errorbar(bin.gam2, mapping = aes(ymin = L50-SE, ymax = L50+SE))+
+  xlab("Year")+
+  scale_x_continuous(breaks = seq(min(l50.df$year), max(l50.df$year), by = 3))+
+  # scale_color_manual(values = c("darkgoldenrod", "cadetblue", "darksalmon", "darkgreen"),
+  #                    labels = c("Unweighted, binomial GAM", 
+  #                               "CPUE-weighted, binomial GAM",
+  #                               "SF-weighted, binomial GAM",
+  #                               "SF-weighted, legacy"), name = "")+
+  theme_bw()+
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())
+
+ggsave("./Figures/size_at_50maturity_comparison.png", width = 11, height = 8.5)
 
