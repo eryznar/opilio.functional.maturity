@@ -6,10 +6,6 @@ library(keyring)
 library(lifecycle)
 library(data.table)
 library(crabpack)
-library(INLA)
-library(sdmTMB)
-library(glmmTMB)
-library(broom)
 library(sf)
 library(gstat)
 library(rnaturalearth)
@@ -38,17 +34,6 @@ matEBS <- readRDS("./Data/snow_survey_maturityEBS.rda")
 dir <- "Y:/KOD_Research/Ryznar/Crab functional maturity"
 
 data_dir <- "Y:/KOD_Survey/EBS Shelf/Data_Processing/Data/" # for survey data
-
-# Read in prediction grid, convert to UTM
-pred.grid <- readRDS(paste0(dir, "/Data/EBS_opilio_grid_5km_No_Land.rds")) %>%
-              st_as_sf(., coords = c("Lon", "Lat"), crs = "+proj=longlat +datum=WGS84") %>%
-              st_transform(., crs = "+proj=utm +zone=2") %>%
-              cbind(st_coordinates(.)) %>%
-              as.data.frame(.) %>%
-              dplyr::select(Area_km2, X, Y) %>%
-              #replicate_df(., "year", years) %>%
-              mutate(X = X/1000, Y = Y/1000) %>%
-              rename(LONGITUDE = X, LATITUDE = Y)
 
 # Specify cutline coefficients
 minima <- read.csv("./Output/opilio_cutline_minima.csv") %>%
