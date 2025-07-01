@@ -21,88 +21,77 @@ snow_cpue <- calc_cpue(crab_data = readRDS("./Data/snow_survey_specimenEBS.rda")
 
 # Join 1mm cpue to chela crab
 mod.dat <- sh_chela %>%
-              mutate(SIZE_1MM = floor(SIZE),
-                     MAT_TEXT = case_when((MATURE == 1) ~ "Mature",
-                                          TRUE ~ "Immature")) %>% # could change this to 10mm or 5mm bins instead of 1mm
-              right_join(., snow_cpue) %>% # adding in haul-level CPUE for corresponding 1mm size bin
-              mutate(YEAR = as.factor(YEAR)) %>%
-              mutate(MATURE = case_when((SIZE <=35) ~ 0,
-                                           (SIZE >= 135) ~ 1,
-                                        TRUE ~ MATURE),
-                     CPUE = as.integer(round(CPUE))) %>%
-          na.omit()
+        mutate(SIZE_1MM = floor(SIZE),
+               MAT_TEXT = case_when((MATURE == 1) ~ "Mature",
+                                    TRUE ~ "Immature")) %>% # could change this to 10mm or 5mm bins instead of 1mm
+        right_join(., snow_cpue) %>% # adding in haul-level CPUE for corresponding 1mm size bin
+        mutate(YEAR = as.factor(YEAR)) %>%
+        mutate(MATURE = case_when((SIZE <40) ~ 0,
+                                  (SIZE >= 115) ~ 1,
+                                  TRUE ~ MATURE),
+               log.CPUE = as.integer(round(log(CPUE+10))),
+               CPUE = as.integer(round(CPUE))) %>%
+        na.omit() 
 
+# Binomial GAM for loop to fit by year
+yrs <- unique(mod.dat$YEAR)
+plot.dat <- data.frame()
 
-# Fit unweighted binomial gam ----
-mod.1 <- bam(MATURE ~ YEAR + s(SIZE), family = binomial(link = "logit"), data = mod.dat)
+for(ii in 1:length(yrs)){
+  mod.dat %>%
+    filter(YEAR %in% yrs[ii]) -> mod.dat2
+  
+  print(paste0("Fitting ", yrs[ii]))
+  
+  new.dat <- data.frame(YEAR = unique(mod.dat2$YEAR), SIZE = seq(min(mod.dat2$SIZE), max(mod.dat2$SIZE), by = 1))
+  
+  mod.1 <- bam(MATURE ~ s(SIZE), family = binomial(link = "logit"), data = mod.dat2)
+  prd.1 <- predict(mod.1, new.dat, type = "response", se.fit = TRUE)
+  
+  mod.2 <- bam(MATURE ~ s(SIZE), family = binomial(link = "logit"), data = mod.dat2, weights = CPUE)
+  prd.2 <- predict(mod.2, new.dat, type = "response", se.fit = TRUE)
+  
+  
+  mod.3 <- bam(MATURE ~ s(SIZE), family = binomial(link = "logit"), data = mod.dat2, weights = log.CPUE)
+  prd.3 <- predict(mod.3, new.dat, type = "response", se.fit = TRUE)
+  
+  
+  out <- rbind(data.frame(new.dat, prd = prd.1, type = "Unweighted"),
+               data.frame(new.dat, prd = prd.2, type = "CPUE-weighted"),
+               data.frame(new.dat, prd = prd.3, type = "log(CPUE)-weighted")) %>%
+    mutate(prd.fit = case_when((SIZE <=44) ~ 0,
+                               (SIZE >= 115) ~ 1,
+                               TRUE ~ prd.fit),
+           N = nrow(mod.dat2))
+  
+  plot.dat <- rbind(plot.dat, out)
+}
 
-prd <- predict(mod.1, data.frame(YEAR = mod.dat$YEAR, SIZE = mod.dat$SIZE),
-               type = "response", se.fit = TRUE)$fit
-
-plot_dat<- data.frame(YEAR = mod.dat$YEAR, MATURE = mod.dat$MATURE, SIZE = mod.dat$SIZE, prd = prd)
-
-ggplot(plot_dat, aes(SIZE, prd, color = YEAR))+
-  geom_line(linewidth = 1)+
-  theme_bw()
-
-# # Predict on one year
-# newdat<-data.frame(YEAR=2021,
-#                    SIZE=seq(40,140,5))
-# 
-# prd <- predict(mod.1, newdat,
-#                type = "response", se.fit = TRUE)$fit
-# 
-# plot_dat<- cbind(newdat, prd)
-# 
-# ggplot(plot_dat, aes(SIZE, prd))+
-#   geom_line(linewidth = 1)+
-#   theme_bw()
-
-# Fit cpue-weighted binomial gam ----
-mod.2 <- bam(MATURE ~ YEAR + s(SIZE), family = binomial(link = "logit"), data = mod.dat, weights = CPUE)
-
-prd <- predict(mod.2, data.frame(YEAR = mod.dat$YEAR, SIZE = mod.dat$SIZE),
-               type = "response", se.fit = TRUE)$fit
-
-plot_dat2<- data.frame(YEAR = mod.dat$YEAR, MATURE = mod.dat$MATURE, SIZE = mod.dat$SIZE, prd = prd)
-
-ggplot(plot_dat2, aes(SIZE, prd, color = YEAR))+
-  geom_line(linewidth = 1)+
-  theme_bw()
-
-# # Predict on one year
-# newdat<-data.frame(YEAR=2021,
-#                    SIZE=seq(40,140,5))
-# 
-# prd <- predict(mod.2, newdat,
-#                type = "response", se.fit = TRUE)$fit
-# 
-# plot_dat2<- cbind(newdat, prd)
-# 
-# ggplot(plot_dat2, aes(SIZE, prd))+
-#   geom_line(linewidth = 1)+
-#   theme_bw()
-
-# 
-
-# Combine predictions from both models
-all.dat <- rbind(plot_dat %>% mutate(type = "Unweighted"), plot_dat2 %>% mutate(type = "CPUE-weighted"))
-
+labelz <- paste0(unique(plot.dat$YEAR), " \n(N=", unique(plot.dat$N), ")")
+names(labelz) <- unique(plot.dat$YEAR)
 
 ggplot()+
-  geom_line(all.dat %>% filter(type == "Unweighted"), mapping = aes(SIZE, prd, color = as.factor(1), group = YEAR), linewidth = 1)+
-  geom_line(all.dat %>% filter(type == "CPUE-weighted"), mapping = aes(SIZE, prd, color = as.factor(2), group = YEAR), linewidth = 1)+
-  scale_color_manual(values = c("darkgoldenrod", "cadetblue"), labels = c("Unweighted", "CPUE-weighted"), name = "")+
+  geom_line(plot.dat %>% filter(type == "Unweighted"), mapping = aes(SIZE, prd.fit, color = as.factor(1), group = YEAR), linewidth = 1)+
+  geom_line(plot.dat %>% filter(type == "CPUE-weighted"), mapping = aes(SIZE, prd.fit, color = as.factor(2), group = YEAR), linewidth = 1)+
+  geom_line(plot.dat %>% filter(type == "log(CPUE)-weighted"), mapping = aes(SIZE, prd.fit, color = as.factor(3), group = YEAR), linewidth = 1)+
+  scale_color_manual(values = c("darkgoldenrod", "cadetblue", "darksalmon"), labels = c("Unweighted", "CPUE-weighted", "Log(CPUE)-weighted"), name = "")+
+  scale_fill_manual(values = c("darkgoldenrod", "cadetblue", "darksalmon"), labels = c("Unweighted", "CPUE-weighted", "Log(CPUE)-weighted"), name = "")+
   theme_bw()+
-  facet_wrap(~YEAR)+
-  ylab("Probability of terminal molt")+
+  facet_wrap(~YEAR, labeller = labeller(YEAR = labelz))+
+  # geom_ribbon(plot.dat %>% filter(type == "Unweighted"),
+  #           mapping = aes(SIZE, ymin = prd - prd.se, ymax = prd + prd.se, fill = as.factor(1)), alpha = 0.25)+
+  # geom_ribbon(plot.dat %>% filter(type == "CPUE-weighted"),
+  #             mapping = aes(SIZE, ymin = prd - prd.se, ymax = prd + prd.se, fill = as.factor(2)), alpha = 0.25)+
+  # ylab("Probability of terminal molt")+
   xlab("Carapace width (mm)")+
-  theme(axis.text = element_text(size = 14),
-        axis.title = element_text(size = 14),
-        legend.text = element_text(size = 14),
-        strip.text = element_text(size = 14))
+  scale_x_continuous(limits = c(25, 138), breaks = seq(25, 140, by = 25))+
+  theme(axis.text = element_text(size = 11),
+        axis.title = element_text(size = 13),
+        legend.text = element_text(size = 13),
+        strip.text = element_text(size = 11))
 
-ggsave("./Figures/binomialGAMs_pmolt_predictions.png", width = 11, height = 8.5)
+ggsave("./Figures/log_cpue_untwd_ogives.png", width = 11, height = 8.5, units = "in")
+
  
 ## Solve for 50% maturity ----
 # Specify function
